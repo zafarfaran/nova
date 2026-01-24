@@ -4,12 +4,11 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from openai import OpenAI
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai import get_chat_provider
 from app.ai.tools import TOOL_DEFINITIONS, ChatTools
-from app.config import get_settings
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 
 SYSTEM_PROMPT = """You are Nova, an AI assistant for UK VAT compliance. You help accountants manage VAT evidence collection for their clients.
@@ -48,8 +47,7 @@ class ChatService:
 
     def __init__(self, db: Session):
         self.db = db
-        self.settings = get_settings()
-        self.client = OpenAI(api_key=self.settings.openai_api_key)
+        self.chat_provider = get_chat_provider()
         self.tools = ChatTools(db)
 
     def create_session(self, client_id: int | None = None, title: str | None = None) -> ChatSession:
@@ -100,7 +98,7 @@ class ChatService:
         return message
 
     def _build_messages(self, session_id: int) -> list[dict]:
-        """Build message history for OpenAI API call."""
+        """Build message history for AI API call."""
         messages = self.get_messages(session_id)
         api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -110,6 +108,7 @@ class ChatService:
             elif msg.role == MessageRole.ASSISTANT:
                 assistant_msg = {"role": "assistant", "content": msg.content or ""}
                 if msg.tool_calls:
+                    # Store tool calls in OpenAI format for compatibility
                     assistant_msg["tool_calls"] = [
                         {
                             "id": tc["id"],
@@ -131,8 +130,8 @@ class ChatService:
 
         return api_messages
 
-    def _convert_tools_for_openai(self) -> list[dict]:
-        """Convert tool definitions to OpenAI format."""
+    def _convert_tools_for_api(self) -> list[dict]:
+        """Convert tool definitions to API format (OpenAI-style)."""
         return [
             {
                 "type": "function",
@@ -153,26 +152,19 @@ class ChatService:
         # Build conversation history
         messages = self._build_messages(session_id)
 
-        # Call OpenAI with tools
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
+        # Call AI provider with tools
+        response = await self.chat_provider.chat(
             messages=messages,
-            tools=self._convert_tools_for_openai(),
+            tools=self._convert_tools_for_api(),
             tool_choice="auto",
         )
 
         # Process response - handle tool calls in a loop
-        while response.choices[0].finish_reason == "tool_calls":
-            assistant_message = response.choices[0].message
-            assistant_text = assistant_message.content or ""
-            tool_calls = []
-
-            for tc in assistant_message.tool_calls or []:
-                tool_calls.append({
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "input": json.loads(tc.function.arguments),
-                })
+        while response["finish_reason"] == "tool_calls" or (
+            response["finish_reason"] == "tool_use" and response["tool_calls"]
+        ):
+            assistant_text = response["content"]
+            tool_calls = response["tool_calls"]
 
             # Save assistant message with tool calls
             self._save_message(
@@ -196,15 +188,14 @@ class ChatService:
 
             # Continue conversation with tool results
             messages = self._build_messages(session_id)
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
+            response = await self.chat_provider.chat(
                 messages=messages,
-                tools=self._convert_tools_for_openai(),
+                tools=self._convert_tools_for_api(),
                 tool_choice="auto",
             )
 
         # Extract final text response
-        final_text = response.choices[0].message.content or ""
+        final_text = response["content"]
 
         # Save final assistant message
         self._save_message(session_id, MessageRole.ASSISTANT, final_text)
@@ -225,57 +216,44 @@ class ChatService:
         for msg in messages:
             api_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        # Call OpenAI with tools (streaming)
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=api_messages,
-            tools=self._convert_tools_for_openai(),
-            tool_choice="auto",
-            stream=True,
-        )
-
-        # Collect streamed response
+        # Call AI provider with tools (streaming)
         collected_text = ""
-        tool_calls_data: dict[int, dict] = {}  # index -> {id, name, arguments}
+        tool_calls_list = []
         finish_reason = None
 
-        for chunk in response:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
+        async for chunk in self.chat_provider.chat_stream(
+            messages=api_messages,
+            tools=self._convert_tools_for_api(),
+            tool_choice="auto",
+        ):
+            if chunk["type"] == "text":
+                collected_text += chunk["content"]
+                yield f"data: {json.dumps({'type': 'text', 'content': chunk['content']})}\n\n"
 
-            if delta:
-                # Stream text content
-                if delta.content:
-                    collected_text += delta.content
-                    yield f"data: {json.dumps({'type': 'text', 'content': delta.content})}\n\n"
+            elif chunk["type"] == "tool_calls":
+                tool_calls_list = chunk["tool_calls"]
 
-                # Collect tool calls
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = tc.index
-                        if idx not in tool_calls_data:
-                            tool_calls_data[idx] = {"id": "", "name": "", "arguments": ""}
-                        if tc.id:
-                            tool_calls_data[idx]["id"] = tc.id
-                        if tc.function:
-                            if tc.function.name:
-                                tool_calls_data[idx]["name"] = tc.function.name
-                            if tc.function.arguments:
-                                tool_calls_data[idx]["arguments"] += tc.function.arguments
+            elif chunk["type"] == "done":
+                finish_reason = chunk["finish_reason"]
 
         # Handle tool calls if any
-        while finish_reason == "tool_calls" and tool_calls_data:
+        while finish_reason in ("tool_calls", "tool_use") and tool_calls_list:
             # Process each tool call
             tool_results = []
-            for idx in sorted(tool_calls_data.keys()):
-                tc = tool_calls_data[idx]
+            for tc in tool_calls_list:
                 tool_name = tc["name"]
 
                 # Notify frontend about tool execution
                 yield f"data: {json.dumps({'type': 'tool_executing', 'tool': tool_name})}\n\n"
 
                 try:
-                    tool_input = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                    # Handle both raw dict input and JSON string
+                    if isinstance(tc.get("arguments"), str):
+                        args_str = tc["arguments"].strip()
+                        tool_input = json.loads(args_str) if args_str else {}
+                    else:
+                        tool_input = tc.get("input", {})
+
                     result = self.tools.execute(tool_name, tool_input)
                     result_str = json.dumps(result, indent=2, default=str)
                 except Exception as e:
@@ -293,52 +271,37 @@ class ChatService:
             assistant_msg: dict[str, Any] = {"role": "assistant", "content": collected_text or None}
             assistant_msg["tool_calls"] = [
                 {
-                    "id": tool_calls_data[idx]["id"],
+                    "id": tc["id"],
                     "type": "function",
                     "function": {
-                        "name": tool_calls_data[idx]["name"],
-                        "arguments": tool_calls_data[idx]["arguments"],
+                        "name": tc["name"],
+                        "arguments": tc.get("arguments", json.dumps(tc.get("input", {}))),
                     },
                 }
-                for idx in sorted(tool_calls_data.keys())
+                for tc in tool_calls_list
             ]
 
             continuation_messages = api_messages + [assistant_msg] + tool_results
 
-            # Continue with tool results (streaming)
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=continuation_messages,
-                tools=self._convert_tools_for_openai(),
-                tool_choice="auto",
-                stream=True,
-            )
-
             # Reset for next iteration
             collected_text = ""
-            tool_calls_data = {}
+            tool_calls_list = []
             finish_reason = None
 
-            for chunk in response:
-                delta = chunk.choices[0].delta if chunk.choices else None
-                finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
+            # Continue with tool results (streaming)
+            async for chunk in self.chat_provider.chat_stream(
+                messages=continuation_messages,
+                tools=self._convert_tools_for_api(),
+                tool_choice="auto",
+            ):
+                if chunk["type"] == "text":
+                    collected_text += chunk["content"]
+                    yield f"data: {json.dumps({'type': 'text', 'content': chunk['content']})}\n\n"
 
-                if delta:
-                    if delta.content:
-                        collected_text += delta.content
-                        yield f"data: {json.dumps({'type': 'text', 'content': delta.content})}\n\n"
+                elif chunk["type"] == "tool_calls":
+                    tool_calls_list = chunk["tool_calls"]
 
-                    if delta.tool_calls:
-                        for tc in delta.tool_calls:
-                            idx = tc.index
-                            if idx not in tool_calls_data:
-                                tool_calls_data[idx] = {"id": "", "name": "", "arguments": ""}
-                            if tc.id:
-                                tool_calls_data[idx]["id"] = tc.id
-                            if tc.function:
-                                if tc.function.name:
-                                    tool_calls_data[idx]["name"] = tc.function.name
-                                if tc.function.arguments:
-                                    tool_calls_data[idx]["arguments"] += tc.function.arguments
+                elif chunk["type"] == "done":
+                    finish_reason = chunk["finish_reason"]
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"

@@ -1,0 +1,13 @@
+{
+  "app": {
+    "[project]/src/app/accountant/page": [
+      "static/media/caa3a2e1cccd8315-s.p.853070df.woff2"
+    ],
+    "[project]/src/app/onboard/[clientId]/page": [
+      "static/media/caa3a2e1cccd8315-s.p.853070df.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pages": {},
+  "pagesUsingSizeAdjust": false
+}

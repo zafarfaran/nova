@@ -3,41 +3,11 @@ import { db } from "~/server/db";
 import { ChecklistUploader } from "./ChecklistUploader";
 import { SubmitButton } from "./SubmitButton";
 import { BankConnectionButton } from "./BankConnectionButton";
-import { vatPeriodsApi, evidenceApi } from "~/lib/api/client";
-import type { VATPeriodResponse, CoverageSummary } from "~/lib/api/types";
 
 interface PageProps {
     params: Promise<{
         clientId: string;
     }>;
-}
-
-// Fetch VAT data from backend if backendClientId exists
-async function fetchBackendVATData(backendClientId: number): Promise<{
-    vatPeriods: VATPeriodResponse[];
-    coverage: CoverageSummary | null;
-}> {
-    try {
-        const vatPeriods = await vatPeriodsApi.getByClient(backendClientId);
-
-        // Get coverage for the most recent period
-        let coverage: CoverageSummary | null = null;
-        if (vatPeriods.length > 0) {
-            const latestPeriod = vatPeriods[0];
-            if (latestPeriod) {
-                try {
-                    coverage = await evidenceApi.getCoverage(latestPeriod.id);
-                } catch {
-                    // Coverage might not exist yet
-                }
-            }
-        }
-
-        return { vatPeriods, coverage };
-    } catch (error) {
-        console.error("Error fetching backend VAT data:", error);
-        return { vatPeriods: [], coverage: null };
-    }
 }
 
 export default async function OnboardingPage({ params }: PageProps) {
@@ -47,19 +17,14 @@ export default async function OnboardingPage({ params }: PageProps) {
     const clientSetup = await db.clientSetup.findUnique({
         where: { id: clientId },
         include: {
-            checklistItems: true,
-            autoChasers: true,
+            ChecklistItem: true,
+            AutoChaser: true,
         },
     });
 
     if (!clientSetup) {
         notFound();
     }
-
-    // Fetch VAT data from backend if linked
-    const backendData = clientSetup.backendClientId
-        ? await fetchBackendVATData(clientSetup.backendClientId)
-        : { vatPeriods: [], coverage: null };
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
@@ -122,66 +87,6 @@ export default async function OnboardingPage({ params }: PageProps) {
                     </div>
                 </div>
 
-                {/* Backend VAT Data Section */}
-                {backendData.vatPeriods.length > 0 && (
-                    <div className="mb-6 overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200 sm:mb-8">
-                        <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-emerald-50 px-6 py-4 sm:px-8">
-                            <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-                                <svg className="h-6 w-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                </svg>
-                                VAT Period Status
-                            </h2>
-                        </div>
-
-                        <div className="p-6 sm:p-8">
-                            {backendData.vatPeriods.map((period) => (
-                                <div key={period.id} className="mb-4 rounded-lg bg-slate-50 p-4 ring-1 ring-slate-200">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="text-sm font-medium text-slate-900">
-                                                {new Date(period.period_start).toLocaleDateString()} - {new Date(period.period_end).toLocaleDateString()}
-                                            </p>
-                                            {period.due_date && (
-                                                <p className="text-xs text-slate-600">
-                                                    Due: {new Date(period.due_date).toLocaleDateString()}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 ${
-                                            period.status === "submitted" ? "bg-green-50 text-green-700 ring-green-200" :
-                                            period.status === "ready" ? "bg-blue-50 text-blue-700 ring-blue-200" :
-                                            period.status === "in_progress" ? "bg-amber-50 text-amber-700 ring-amber-200" :
-                                            "bg-slate-50 text-slate-700 ring-slate-200"
-                                        }`}>
-                                            {period.status.replace("_", " ").toUpperCase()}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
-
-                            {backendData.coverage && (
-                                <div className="mt-4 rounded-lg bg-emerald-50 p-4 ring-1 ring-emerald-200">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm font-medium text-emerald-900">Evidence Coverage</span>
-                                        <span className="text-lg font-bold text-emerald-700">
-                                            {backendData.coverage.overall_coverage_percentage.toFixed(1)}%
-                                        </span>
-                                    </div>
-                                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-200">
-                                        <div
-                                            className="h-full rounded-full bg-emerald-600 transition-all"
-                                            style={{ width: `${Math.min(backendData.coverage.overall_coverage_percentage, 100)}%` }}
-                                        />
-                                    </div>
-                                    <p className="mt-2 text-xs text-emerald-700">
-                                        {backendData.coverage.total_received} of {backendData.coverage.total_expected} items received
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
 
                 {/* Checklist */}
                 <div className="mb-6 overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200 sm:mb-8">
@@ -195,7 +100,7 @@ export default async function OnboardingPage({ params }: PageProps) {
                     </div>
 
                     <div className="space-y-4 p-6 sm:p-8">
-                        {clientSetup.checklistItems.map((item) => (
+                        {clientSetup.ChecklistItem.map((item) => (
                             <ChecklistUploader
                                 key={item.id}
                                 item={item}
@@ -225,7 +130,7 @@ export default async function OnboardingPage({ params }: PageProps) {
                 </div>
 
                 {/* Auto Chasers Info */}
-                {clientSetup.autoChasers.length > 0 && (
+                {clientSetup.AutoChaser.length > 0 && (
                     <div className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 p-6 shadow-md ring-1 ring-blue-200 sm:mb-8 sm:p-8">
                         <div className="flex items-start gap-4">
                             <div className="flex-shrink-0 rounded-full bg-blue-100 p-3">
@@ -241,7 +146,7 @@ export default async function OnboardingPage({ params }: PageProps) {
                                     You'll receive automatic email reminders if any required documents are missing:
                                 </p>
                                 <ul className="mt-3 space-y-2">
-                                    {clientSetup.autoChasers.map((chaser, idx) => (
+                                    {clientSetup.AutoChaser.map((chaser, idx) => (
                                         <li key={idx} className="flex items-center gap-2 text-sm text-blue-700">
                                             <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -256,7 +161,7 @@ export default async function OnboardingPage({ params }: PageProps) {
                 )}
 
                 {/* Submit Button */}
-                <SubmitButton clientId={clientSetup.id} checklistItems={clientSetup.checklistItems} />
+                <SubmitButton clientId={clientSetup.id} checklistItems={clientSetup.ChecklistItem} />
             </div>
         </div>
     );

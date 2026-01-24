@@ -121,12 +121,149 @@ exports.Prisma.TransactionIsolationLevel = makeStrictEnum({
   Serializable: 'Serializable'
 });
 
-exports.Prisma.PostScalarFieldEnum = {
+exports.Prisma.ClientScalarFieldEnum = {
   id: 'id',
   name: 'name',
+  vatNumber: 'vatNumber',
+  entityType: 'entityType',
+  contactEmail: 'contactEmail',
+  contactName: 'contactName',
+  address: 'address',
+  notes: 'notes',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt',
-  createdById: 'createdById'
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.VATPeriodScalarFieldEnum = {
+  id: 'id',
+  clientId: 'clientId',
+  periodStart: 'periodStart',
+  periodEnd: 'periodEnd',
+  dueDate: 'dueDate',
+  status: 'status',
+  isLocked: 'isLocked',
+  reference: 'reference',
+  notes: 'notes',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.EvidenceItemScalarFieldEnum = {
+  id: 'id',
+  vatPeriodId: 'vatPeriodId',
+  category: 'category',
+  description: 'description',
+  status: 'status',
+  expectedCount: 'expectedCount',
+  receivedCount: 'receivedCount',
+  notes: 'notes',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.DocumentScalarFieldEnum = {
+  id: 'id',
+  evidenceItemId: 'evidenceItemId',
+  filename: 'filename',
+  s3Key: 's3Key',
+  fileHash: 'fileHash',
+  contentType: 'contentType',
+  fileSize: 'fileSize',
+  status: 'status',
+  documentType: 'documentType',
+  processingError: 'processingError',
+  extractedData: 'extractedData',
+  invoiceNumber: 'invoiceNumber',
+  invoiceDate: 'invoiceDate',
+  supplierName: 'supplierName',
+  supplierVatNumber: 'supplierVatNumber',
+  customerName: 'customerName',
+  customerVatNumber: 'customerVatNumber',
+  netAmount: 'netAmount',
+  vatAmount: 'vatAmount',
+  grossAmount: 'grossAmount',
+  vatRate: 'vatRate',
+  currency: 'currency',
+  description: 'description',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.ValidationResultScalarFieldEnum = {
+  id: 'id',
+  documentId: 'documentId',
+  ruleType: 'ruleType',
+  status: 'status',
+  message: 'message',
+  details: 'details',
+  fieldName: 'fieldName',
+  expectedValue: 'expectedValue',
+  actualValue: 'actualValue',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.AuditTrailEntryScalarFieldEnum = {
+  id: 'id',
+  vatPeriodId: 'vatPeriodId',
+  action: 'action',
+  description: 'description',
+  performedBy: 'performedBy',
+  performedAt: 'performedAt',
+  entityType: 'entityType',
+  entityId: 'entityId',
+  oldValue: 'oldValue',
+  newValue: 'newValue',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.ChaserRequestScalarFieldEnum = {
+  id: 'id',
+  vatPeriodId: 'vatPeriodId',
+  recipientEmail: 'recipientEmail',
+  recipientName: 'recipientName',
+  requestedItems: 'requestedItems',
+  uploadToken: 'uploadToken',
+  dueDate: 'dueDate',
+  status: 'status',
+  subject: 'subject',
+  messageBody: 'messageBody',
+  sentAt: 'sentAt',
+  lastRemindedAt: 'lastRemindedAt',
+  reminderCount: 'reminderCount',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.ChaserResponseScalarFieldEnum = {
+  id: 'id',
+  chaserRequestId: 'chaserRequestId',
+  responderEmail: 'responderEmail',
+  responderName: 'responderName',
+  documentsUploaded: 'documentsUploaded',
+  notes: 'notes',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.ChatSessionScalarFieldEnum = {
+  id: 'id',
+  clientId: 'clientId',
+  title: 'title',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.ChatMessageScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  role: 'role',
+  content: 'content',
+  toolCalls: 'toolCalls',
+  toolCallId: 'toolCallId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 };
 
 exports.Prisma.AccountScalarFieldEnum = {
@@ -143,59 +280,6 @@ exports.Prisma.AccountScalarFieldEnum = {
   id_token: 'id_token',
   session_state: 'session_state',
   refresh_token_expires_in: 'refresh_token_expires_in'
-};
-
-exports.Prisma.SessionScalarFieldEnum = {
-  id: 'id',
-  sessionToken: 'sessionToken',
-  userId: 'userId',
-  expires: 'expires'
-};
-
-exports.Prisma.UserScalarFieldEnum = {
-  id: 'id',
-  name: 'name',
-  email: 'email',
-  emailVerified: 'emailVerified',
-  image: 'image'
-};
-
-exports.Prisma.VerificationTokenScalarFieldEnum = {
-  identifier: 'identifier',
-  token: 'token',
-  expires: 'expires'
-};
-
-exports.Prisma.ClientSetupScalarFieldEnum = {
-  id: 'id',
-  email: 'email',
-  clientName: 'clientName',
-  entityType: 'entityType',
-  vatScheme: 'vatScheme',
-  vatPeriodStart: 'vatPeriodStart',
-  vatPeriodEnd: 'vatPeriodEnd',
-  vatPeriodLabel: 'vatPeriodLabel',
-  bankAccounts: 'bankAccounts',
-  salesChannels: 'salesChannels',
-  notes: 'notes',
-  backendClientId: 'backendClientId',
-  createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
-};
-
-exports.Prisma.ChecklistItemScalarFieldEnum = {
-  id: 'id',
-  clientSetupId: 'clientSetupId',
-  itemId: 'itemId',
-  title: 'title',
-  required: 'required',
-  status: 'status',
-  acceptance: 'acceptance',
-  ctaAction: 'ctaAction',
-  ctaData: 'ctaData',
-  uploadedFileUrl: 'uploadedFileUrl',
-  createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
 };
 
 exports.Prisma.AutoChaserScalarFieldEnum = {
@@ -224,9 +308,83 @@ exports.Prisma.BankConnectionScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.ChecklistItemScalarFieldEnum = {
+  id: 'id',
+  clientSetupId: 'clientSetupId',
+  itemId: 'itemId',
+  title: 'title',
+  required: 'required',
+  status: 'status',
+  acceptance: 'acceptance',
+  ctaAction: 'ctaAction',
+  ctaData: 'ctaData',
+  uploadedFileUrl: 'uploadedFileUrl',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.ClientSetupScalarFieldEnum = {
+  id: 'id',
+  email: 'email',
+  clientName: 'clientName',
+  entityType: 'entityType',
+  vatScheme: 'vatScheme',
+  vatPeriodStart: 'vatPeriodStart',
+  vatPeriodEnd: 'vatPeriodEnd',
+  vatPeriodLabel: 'vatPeriodLabel',
+  bankAccounts: 'bankAccounts',
+  salesChannels: 'salesChannels',
+  notes: 'notes',
+  backendClientId: 'backendClientId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.PostScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  createdById: 'createdById'
+};
+
+exports.Prisma.SessionScalarFieldEnum = {
+  id: 'id',
+  sessionToken: 'sessionToken',
+  userId: 'userId',
+  expires: 'expires'
+};
+
+exports.Prisma.UserScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  email: 'email',
+  emailVerified: 'emailVerified',
+  image: 'image'
+};
+
+exports.Prisma.VerificationTokenScalarFieldEnum = {
+  identifier: 'identifier',
+  token: 'token',
+  expires: 'expires'
+};
+
+exports.Prisma.Alembic_versionScalarFieldEnum = {
+  version_num: 'version_num'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
+};
+
+exports.Prisma.NullableJsonNullValueInput = {
+  DbNull: Prisma.DbNull,
+  JsonNull: Prisma.JsonNull
+};
+
+exports.Prisma.JsonNullValueInput = {
+  JsonNull: Prisma.JsonNull
 };
 
 exports.Prisma.QueryMode = {
@@ -239,17 +397,129 @@ exports.Prisma.NullsOrder = {
   last: 'last'
 };
 
+exports.Prisma.JsonNullValueFilter = {
+  DbNull: Prisma.DbNull,
+  JsonNull: Prisma.JsonNull,
+  AnyNull: Prisma.AnyNull
+};
+exports.entitytype = exports.$Enums.entitytype = {
+  SOLE_TRADER: 'SOLE_TRADER',
+  PARTNERSHIP: 'PARTNERSHIP',
+  LLP: 'LLP',
+  LIMITED_COMPANY: 'LIMITED_COMPANY',
+  PLC: 'PLC',
+  CHARITY: 'CHARITY',
+  OTHER: 'OTHER'
+};
+
+exports.periodstatus = exports.$Enums.periodstatus = {
+  DRAFT: 'DRAFT',
+  IN_PROGRESS: 'IN_PROGRESS',
+  UNDER_REVIEW: 'UNDER_REVIEW',
+  READY: 'READY',
+  SUBMITTED: 'SUBMITTED',
+  LOCKED: 'LOCKED'
+};
+
+exports.evidencecategory = exports.$Enums.evidencecategory = {
+  SALES_INVOICES: 'SALES_INVOICES',
+  PURCHASE_INVOICES: 'PURCHASE_INVOICES',
+  CREDIT_NOTES: 'CREDIT_NOTES',
+  DEBIT_NOTES: 'DEBIT_NOTES',
+  BANK_STATEMENTS: 'BANK_STATEMENTS',
+  RECEIPTS: 'RECEIPTS',
+  CONTRACTS: 'CONTRACTS',
+  IMPORT_DOCUMENTS: 'IMPORT_DOCUMENTS',
+  EXPORT_DOCUMENTS: 'EXPORT_DOCUMENTS',
+  VAT_CERTIFICATES: 'VAT_CERTIFICATES',
+  OTHER: 'OTHER'
+};
+
+exports.evidencestatus = exports.$Enums.evidencestatus = {
+  PENDING: 'PENDING',
+  PARTIAL: 'PARTIAL',
+  COMPLETE: 'COMPLETE',
+  VALIDATED: 'VALIDATED',
+  EXCEPTION: 'EXCEPTION'
+};
+
+exports.documentstatus = exports.$Enums.documentstatus = {
+  PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
+  EXTRACTED: 'EXTRACTED',
+  VALIDATED: 'VALIDATED',
+  FAILED: 'FAILED'
+};
+
+exports.documenttype = exports.$Enums.documenttype = {
+  INVOICE: 'INVOICE',
+  CREDIT_NOTE: 'CREDIT_NOTE',
+  DEBIT_NOTE: 'DEBIT_NOTE',
+  RECEIPT: 'RECEIPT',
+  BANK_STATEMENT: 'BANK_STATEMENT',
+  CONTRACT: 'CONTRACT',
+  IMPORT_DECLARATION: 'IMPORT_DECLARATION',
+  EXPORT_DECLARATION: 'EXPORT_DECLARATION',
+  VAT_CERTIFICATE: 'VAT_CERTIFICATE',
+  OTHER: 'OTHER'
+};
+
+exports.ruletype = exports.$Enums.ruletype = {
+  REQUIRED_FIELDS: 'REQUIRED_FIELDS',
+  VAT_NUMBER_FORMAT: 'VAT_NUMBER_FORMAT',
+  DATE_IN_PERIOD: 'DATE_IN_PERIOD',
+  TOTALS_MATCH: 'TOTALS_MATCH',
+  VAT_RATE_VALID: 'VAT_RATE_VALID',
+  DUPLICATE_DETECTION: 'DUPLICATE_DETECTION',
+  AI_ANOMALY: 'AI_ANOMALY',
+  CURRENCY_VALID: 'CURRENCY_VALID',
+  SUPPLIER_VALID: 'SUPPLIER_VALID'
+};
+
+exports.validationstatus = exports.$Enums.validationstatus = {
+  PASSED: 'PASSED',
+  FAILED: 'FAILED',
+  WARNING: 'WARNING',
+  SKIPPED: 'SKIPPED'
+};
+
+exports.chaserstatus = exports.$Enums.chaserstatus = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  REMINDED: 'REMINDED',
+  PARTIALLY_RECEIVED: 'PARTIALLY_RECEIVED',
+  COMPLETE: 'COMPLETE',
+  EXPIRED: 'EXPIRED'
+};
+
+exports.messagerole = exports.$Enums.messagerole = {
+  USER: 'USER',
+  ASSISTANT: 'ASSISTANT',
+  SYSTEM: 'SYSTEM',
+  TOOL: 'TOOL'
+};
 
 exports.Prisma.ModelName = {
-  Post: 'Post',
+  Client: 'Client',
+  VATPeriod: 'VATPeriod',
+  EvidenceItem: 'EvidenceItem',
+  Document: 'Document',
+  ValidationResult: 'ValidationResult',
+  AuditTrailEntry: 'AuditTrailEntry',
+  ChaserRequest: 'ChaserRequest',
+  ChaserResponse: 'ChaserResponse',
+  ChatSession: 'ChatSession',
+  ChatMessage: 'ChatMessage',
   Account: 'Account',
+  AutoChaser: 'AutoChaser',
+  BankConnection: 'BankConnection',
+  ChecklistItem: 'ChecklistItem',
+  ClientSetup: 'ClientSetup',
+  Post: 'Post',
   Session: 'Session',
   User: 'User',
   VerificationToken: 'VerificationToken',
-  ClientSetup: 'ClientSetup',
-  ChecklistItem: 'ChecklistItem',
-  AutoChaser: 'AutoChaser',
-  BankConnection: 'BankConnection'
+  alembic_version: 'alembic_version'
 };
 
 /**

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface Message {
     role: "user" | "assistant";
@@ -197,8 +197,8 @@ export function AIChat() {
                     >
                         <div
                             className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === "user"
-                                    ? "bg-blue-600 text-white"
-                                    : "bg-slate-100 text-slate-900"
+                                ? "bg-blue-600 text-white"
+                                : "bg-slate-100 text-slate-900"
                                 }`}
                         >
                             <p className="whitespace-pre-wrap text-sm">{message.content}</p>
@@ -241,8 +241,8 @@ export function AIChat() {
                         onClick={isListening ? stopListening : startListening}
                         disabled={isLoading}
                         className={`flex-shrink-0 rounded-xl p-3 transition-colors ${isListening
-                                ? "bg-red-600 hover:bg-red-700"
-                                : "bg-slate-200 hover:bg-slate-300"
+                            ? "bg-red-600 hover:bg-red-700"
+                            : "bg-slate-200 hover:bg-slate-300"
                             } disabled:opacity-50`}
                         title={isListening ? "Stop listening" : "Start voice input"}
                     >
@@ -255,8 +255,8 @@ export function AIChat() {
                     <button
                         onClick={() => setVoiceEnabled(!voiceEnabled)}
                         className={`flex-shrink-0 rounded-xl p-3 transition-colors ${voiceEnabled
-                                ? "bg-green-600 hover:bg-green-700"
-                                : "bg-slate-200 hover:bg-slate-300"
+                            ? "bg-green-600 hover:bg-green-700"
+                            : "bg-slate-200 hover:bg-slate-300"
                             }`}
                         title={voiceEnabled ? "Voice output enabled" : "Voice output disabled"}
                     >
