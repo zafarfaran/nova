@@ -1,8 +1,0 @@
-{
-  "/accountant/page": "app/accountant/page.js",
-  "/api/client/new/route": "app/api/client/new/route.js",
-  "/api/plaid/accounts/[clientId]/route": "app/api/plaid/accounts/[clientId]/route.js",
-  "/api/plaid/create-link-token/route": "app/api/plaid/create-link-token/route.js",
-  "/api/uploadthing/route": "app/api/uploadthing/route.js",
-  "/onboard/[clientId]/page": "app/onboard/[clientId]/page.js"
-}
