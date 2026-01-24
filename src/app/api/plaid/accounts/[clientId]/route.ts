@@ -7,10 +7,18 @@ export async function GET(
 ) {
     try {
         const { clientId } = await params;
+        const clientIdNum = parseInt(clientId, 10);
+
+        if (isNaN(clientIdNum)) {
+            return NextResponse.json(
+                { error: "Invalid client ID" },
+                { status: 400 }
+            );
+        }
 
         const bankConnections = await db.bankConnection.findMany({
             where: {
-                clientSetupId: clientId,
+                clientId: clientIdNum,
                 isActive: true,
             },
             select: {
@@ -52,8 +60,16 @@ export async function DELETE(
             );
         }
 
+        const accountIdNum = parseInt(accountId, 10);
+        if (isNaN(accountIdNum)) {
+            return NextResponse.json(
+                { error: "Invalid account ID" },
+                { status: 400 }
+            );
+        }
+
         await db.bankConnection.update({
-            where: { id: accountId },
+            where: { id: accountIdNum },
             data: { isActive: false },
         });
 

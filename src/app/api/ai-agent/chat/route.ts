@@ -86,130 +86,73 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
 
         case "search_clients":
             try {
-                // Search local ClientSetup database
-                const localClients = await db.clientSetup.findMany({
+                // Search clients database
+                const clients = await db.client.findMany({
                     where: {
                         OR: [
-                            { clientName: { contains: toolInput.query, mode: "insensitive" } },
-                            { email: { contains: toolInput.query, mode: "insensitive" } },
+                            { name: { contains: toolInput.query, mode: "insensitive" } },
+                            { contactEmail: { contains: toolInput.query, mode: "insensitive" } },
                         ],
                     },
-                    take: 5,
+                    take: 10,
                     select: {
                         id: true,
-                        clientName: true,
-                        email: true,
+                        name: true,
+                        contactEmail: true,
                         entityType: true,
                         vatScheme: true,
-                        backendClientId: true,
                     },
                 });
 
-                // Also search backend clients
-                let backendClients: Array<{
-                    id: number;
-                    name: string;
-                    contact_email: string | null;
-                    entity_type: string;
-                }> = [];
-                try {
-                    backendClients = await clientsApi.search(toolInput.query);
-                } catch (backendError) {
-                    console.error("Backend client search error:", backendError);
-                    // Continue with local results only
-                }
-
-                if (localClients.length === 0 && backendClients.length === 0) {
+                if (clients.length === 0) {
                     return `No clients found matching "${toolInput.query}"`;
                 }
 
-                let result = "";
-
-                if (localClients.length > 0) {
-                    result += `Found ${localClients.length} local client(s):\n${localClients
-                        .map(
-                            (c) =>
-                                `- ${c.clientName} (${c.email}) - ${c.entityType}, ${c.vatScheme} [Local ID: ${c.id}]${c.backendClientId ? ` [Backend ID: ${c.backendClientId}]` : ""}`
-                        )
-                        .join("\n")}`;
-                }
-
-                if (backendClients.length > 0) {
-                    if (result) result += "\n\n";
-                    result += `Found ${backendClients.length} backend client(s):\n${backendClients
-                        .map(
-                            (c) =>
-                                `- ${c.name} (${c.contact_email || "no email"}) - ${c.entity_type} [Backend ID: ${c.id}]`
-                        )
-                        .join("\n")}`;
-                }
-
-                return result;
+                return `Found ${clients.length} client(s):\n${clients
+                    .map(
+                        (c: { id: number; name: string; contactEmail: string | null; entityType: string; vatScheme: string | null }) =>
+                            `- ${c.name} (${c.contactEmail || "no email"}) - ${c.entityType}, ${c.vatScheme || "N/A"} [ID: ${c.id}]`
+                    )
+                    .join("\n")}`;
             } catch (error) {
                 return `Error searching clients: ${error}`;
             }
 
         case "get_vat_info":
             try {
-                // If useBackend is true, use backend client ID directly
-                if (toolInput.useBackend) {
-                    const backendClientId = parseInt(toolInput.clientId, 10);
-                    if (isNaN(backendClientId)) {
-                        return `Invalid backend client ID: ${toolInput.clientId}`;
-                    }
-
-                    const vatPeriods = await vatPeriodsApi.getByClient(backendClientId);
-                    if (vatPeriods.length === 0) {
-                        return `No VAT periods found for backend client ID: ${backendClientId}`;
-                    }
-
-                    return `VAT Periods for Backend Client ${backendClientId}:\n${vatPeriods
-                        .map(
-                            (p) =>
-                                `- Period: ${new Date(p.period_start).toLocaleDateString()} - ${new Date(p.period_end).toLocaleDateString()}\n  Status: ${p.status}${p.due_date ? `\n  Due: ${new Date(p.due_date).toLocaleDateString()}` : ""}`
-                        )
-                        .join("\n")}`;
+                const clientId = parseInt(toolInput.clientId, 10);
+                if (isNaN(clientId)) {
+                    return `Invalid client ID: ${toolInput.clientId}`;
                 }
 
-                // Look up local ClientSetup first
-                const client = await db.clientSetup.findUnique({
-                    where: { id: toolInput.clientId },
-                    select: {
-                        clientName: true,
-                        vatScheme: true,
-                        vatPeriodLabel: true,
-                        vatPeriodStart: true,
-                        vatPeriodEnd: true,
-                        backendClientId: true,
+                // Look up client with VAT periods
+                const client = await db.client.findUnique({
+                    where: { id: clientId },
+                    include: {
+                        vatPeriods: {
+                            orderBy: { periodEnd: "desc" },
+                            take: 5,
+                        },
                     },
                 });
 
                 if (!client) {
-                    return `Client not found with ID: ${toolInput.clientId}`;
+                    return `Client not found with ID: ${clientId}`;
                 }
 
-                let result = `VAT Information for ${client.clientName}:
-- VAT Scheme: ${client.vatScheme}
-- VAT Period: ${client.vatPeriodLabel}
-- Period Start: ${new Date(client.vatPeriodStart).toLocaleDateString()}
-- Period End: ${new Date(client.vatPeriodEnd).toLocaleDateString()}`;
+                let result = `VAT Information for ${client.name}:
+- VAT Scheme: ${client.vatScheme || "Not set"}
+- VAT Number: ${client.vatNumber || "Not set"}`;
 
-                // If linked to backend, fetch additional VAT period data
-                if (client.backendClientId) {
-                    try {
-                        const vatPeriods = await vatPeriodsApi.getByClient(client.backendClientId);
-                        if (vatPeriods.length > 0) {
-                            result += `\n\nBackend VAT Periods (${vatPeriods.length} total):\n${vatPeriods
-                                .map(
-                                    (p) =>
-                                        `- ${new Date(p.period_start).toLocaleDateString()} - ${new Date(p.period_end).toLocaleDateString()}: ${p.status}`
-                                )
-                                .join("\n")}`;
-                        }
-                    } catch (backendError) {
-                        console.error("Backend VAT periods error:", backendError);
-                        // Continue with local data only
-                    }
+                if (client.vatPeriods.length > 0) {
+                    result += `\n\nVAT Periods (${client.vatPeriods.length} shown):\n${client.vatPeriods
+                        .map(
+                            (p: { periodStart: Date; periodEnd: Date; status: string; dueDate: Date | null }) =>
+                                `- ${new Date(p.periodStart).toLocaleDateString()} - ${new Date(p.periodEnd).toLocaleDateString()}: ${p.status}${p.dueDate ? ` (Due: ${new Date(p.dueDate).toLocaleDateString()})` : ""}`
+                        )
+                        .join("\n")}`;
+                } else {
+                    result += "\n\nNo VAT periods found for this client.";
                 }
 
                 return result;

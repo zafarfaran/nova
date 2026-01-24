@@ -14,7 +14,7 @@ interface BankAccount {
 }
 
 interface BankConnectionButtonProps {
-    clientId: string;
+    clientId: number;
 }
 
 export function BankConnectionButton({ clientId }: BankConnectionButtonProps) {
@@ -87,6 +87,13 @@ export function BankConnectionButton({ clientId }: BankConnectionButtonProps) {
         token: linkToken,
         onSuccess,
     });
+
+    // Auto-open Plaid when token is ready
+    useEffect(() => {
+        if (linkToken && ready) {
+            open();
+        }
+    }, [linkToken, ready, open]);
 
     // Disconnect bank account
     const disconnectAccount = async (accountId: string) => {
@@ -165,13 +172,7 @@ export function BankConnectionButton({ clientId }: BankConnectionButtonProps) {
 
             {/* Connect Button */}
             <button
-                onClick={() => {
-                    if (linkToken && ready) {
-                        open();
-                    } else {
-                        createLinkToken();
-                    }
-                }}
+                onClick={createLinkToken}
                 disabled={isLoading}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
@@ -213,7 +214,7 @@ export function BankConnectionButton({ clientId }: BankConnectionButtonProps) {
                                 d="M12 6v6m0 0v6m0-6h6m-6 0H6"
                             />
                         </svg>
-                        {linkToken && ready ? "Open Bank Selection" : "Connect Bank Account"}
+                        Connect Bank Account
                     </>
                 )}
             </button>

@@ -53,7 +53,7 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
 
     const handleViewOnboarding = (clientId: string) => {
         // Open onboarding link in new tab
-        window.open(`/onboarding/${clientId}`, "_blank");
+        window.open(`/onboard/${clientId}`, "_blank");
     };
 
     const handleAddNewClient = () => {

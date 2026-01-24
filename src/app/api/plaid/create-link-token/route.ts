@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
         const response = await plaidClient.linkTokenCreate({
             user: {
-                client_user_id: clientId,
+                client_user_id: String(clientId),
             },
             client_name: "VAT Pack Portal",
             products: [Products.Auth, Products.Transactions],

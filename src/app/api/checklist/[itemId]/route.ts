@@ -13,12 +13,21 @@ export async function PATCH(
 ) {
     try {
         const { itemId } = await params;
+        const itemIdNum = parseInt(itemId, 10);
+
+        if (isNaN(itemIdNum)) {
+            return NextResponse.json(
+                { success: false, message: "Invalid item ID" },
+                { status: 400 }
+            );
+        }
+
         const body = await request.json();
         const validatedData = UpdateSchema.parse(body);
 
         // Update the checklist item
         const updatedItem = await db.checklistItem.update({
-            where: { id: itemId },
+            where: { id: itemIdNum },
             data: validatedData,
         });
 

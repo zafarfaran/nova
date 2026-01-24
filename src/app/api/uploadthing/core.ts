@@ -9,34 +9,34 @@ const f = createUploadthing();
 export const ourFileRouter = {
     // Document uploader for checklist items
     documentUploader: f({
-        pdf: { maxFileSize: "10MB", maxFileCount: 5 },
-        image: { maxFileSize: "10MB", maxFileCount: 5 },
+        pdf: { maxFileSize: "8MB", maxFileCount: 5 },
+        image: { maxFileSize: "8MB", maxFileCount: 5 },
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
-            maxFileSize: "10MB",
+            maxFileSize: "8MB",
             maxFileCount: 5,
         },
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
-            maxFileSize: "10MB",
+            maxFileSize: "8MB",
             maxFileCount: 5,
         },
-        "text/csv": { maxFileSize: "10MB", maxFileCount: 5 },
+        "text/csv": { maxFileSize: "8MB", maxFileCount: 5 },
     })
         .input(
             z.object({
-                clientId: z.string(),
-                checklistItemId: z.string(),
+                clientId: z.number(),
+                checklistItemId: z.number(),
             })
         )
         .middleware(async ({ input }) => {
             const { clientId, checklistItemId } = input;
 
-            // Verify the checklist item exists
+            // Verify the checklist item exists and belongs to this client
             const checklistItem = await db.checklistItem.findUnique({
                 where: { id: checklistItemId },
-                include: { clientSetup: true },
+                include: { client: true },
             });
 
-            if (!checklistItem || checklistItem.clientSetupId !== clientId) {
+            if (!checklistItem || checklistItem.clientId !== clientId) {
                 throw new UploadThingError("Invalid checklist item");
             }
 

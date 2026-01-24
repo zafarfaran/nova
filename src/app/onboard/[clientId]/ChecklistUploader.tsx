@@ -6,13 +6,13 @@ import type { ChecklistItem } from "@prisma/client";
 
 interface ChecklistUploaderProps {
     item: ChecklistItem;
-    clientId: string;
+    clientId: number;
 }
 
 // Sync uploaded document to backend
 async function syncDocumentToBackend(
-    clientSetupId: string,
-    checklistItemId: string,
+    clientId: number,
+    checklistItemId: number,
     file: { url: string; name: string; size: number; type?: string }
 ) {
     try {
@@ -20,7 +20,7 @@ async function syncDocumentToBackend(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                clientSetupId,
+                clientId,
                 checklistItemId,
                 filename: file.name,
                 fileUrl: file.url,
@@ -265,7 +265,8 @@ function StatusBadge({ status }: { status: string }) {
         },
     };
 
-    const config = statusConfig[status] || statusConfig.unknown;
+    const config = statusConfig[status] ?? statusConfig.unknown;
+    if (!config) return null;
 
     return (
         <span

@@ -25,6 +25,14 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const clientIdNum = parseInt(clientId, 10);
+        if (isNaN(clientIdNum)) {
+            return NextResponse.json(
+                { error: "Invalid client ID" },
+                { status: 400 }
+            );
+        }
+
         // Exchange public token for access token
         const tokenResponse = await plaidClient.itemPublicTokenExchange({
             public_token: publicToken,
@@ -58,7 +66,7 @@ export async function POST(request: NextRequest) {
             accounts.map((account) =>
                 db.bankConnection.create({
                     data: {
-                        clientSetupId: clientId,
+                        clientId: clientIdNum,
                         plaidAccessToken: accessToken, // In production, encrypt this!
                         plaidItemId: itemId,
                         accountId: account.account_id,

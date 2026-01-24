@@ -1,11 +1,14 @@
-"""AI tools/functions for the chat interface - using Prisma schema."""
+"""AI tools/functions for the chat interface - using unified clients table."""
 
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.client_setup import ClientSetup, ChecklistItem, BankConnection, generate_cuid
+from app.models.client import Client, EntityType
+from app.models.vat_period import VATPeriod, PeriodStatus
+from app.models.bank_connection import BankConnection
+from app.models.checklist_item import ChecklistItem
 
 
 # Tool definitions for function calling
@@ -26,7 +29,7 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "client_id": {
-                    "type": "string",
+                    "type": "integer",
                     "description": "The ID of the client",
                 },
             },
@@ -54,7 +57,7 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "client_id": {
-                    "type": "string",
+                    "type": "integer",
                     "description": "The ID of the client",
                 },
             },
@@ -94,13 +97,9 @@ TOOL_DEFINITIONS = [
                     "enum": ["standard", "flat_rate", "cash_accounting", "annual_accounting"],
                     "description": "The VAT scheme the client uses",
                 },
-                "vat_period_start": {
+                "vat_number": {
                     "type": "string",
-                    "description": "Start date of current VAT period (YYYY-MM-DD format)",
-                },
-                "vat_period_end": {
-                    "type": "string",
-                    "description": "End date of current VAT period (YYYY-MM-DD format)",
+                    "description": "The client's VAT registration number",
                 },
                 "notes": {
                     "type": "string",
@@ -117,7 +116,7 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "item_id": {
-                    "type": "string",
+                    "type": "integer",
                     "description": "The ID of the checklist item",
                 },
                 "status": {
@@ -133,7 +132,7 @@ TOOL_DEFINITIONS = [
 
 
 class ChatTools:
-    """Executor for chat tools using Prisma schema."""
+    """Executor for chat tools using unified clients table."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -150,32 +149,40 @@ class ChatTools:
 
     def _tool_list_clients(self) -> dict[str, Any]:
         """List all clients."""
-        clients = list(self.db.query(ClientSetup).order_by(ClientSetup.updatedAt.desc()).all())
+        clients = list(self.db.query(Client).order_by(Client.updated_at.desc()).all())
         return {
             "clients": [
                 {
                     "id": c.id,
-                    "name": c.clientName,
-                    "email": c.email,
-                    "entity_type": c.entityType,
-                    "vat_scheme": c.vatScheme,
-                    "vat_period": c.vatPeriodLabel,
+                    "name": c.name,
+                    "email": c.contact_email,
+                    "entity_type": c.entity_type.value if c.entity_type else None,
+                    "vat_scheme": c.vat_scheme,
+                    "vat_number": c.vat_number,
                 }
                 for c in clients
             ],
             "total": len(clients),
         }
 
-    def _tool_get_client_details(self, client_id: str) -> dict[str, Any]:
+    def _tool_get_client_details(self, client_id: int) -> dict[str, Any]:
         """Get detailed client information."""
-        client = self.db.get(ClientSetup, client_id)
+        client = self.db.get(Client, client_id)
         if not client:
             return {"error": f"Client {client_id} not found"}
+
+        # Get latest VAT period
+        latest_period = (
+            self.db.query(VATPeriod)
+            .filter(VATPeriod.client_id == client_id)
+            .order_by(VATPeriod.period_end.desc())
+            .first()
+        )
 
         # Get checklist summary
         checklist_items = list(
             self.db.query(ChecklistItem)
-            .filter(ChecklistItem.clientSetupId == client_id)
+            .filter(ChecklistItem.client_id == client_id)
             .all()
         )
         required_items = [i for i in checklist_items if i.required]
@@ -184,25 +191,35 @@ class ChatTools:
         # Get bank connections
         bank_connections = list(
             self.db.query(BankConnection)
-            .filter(BankConnection.clientSetupId == client_id, BankConnection.isActive == True)
+            .filter(BankConnection.client_id == client_id, BankConnection.is_active == True)
             .all()
         )
+
+        vat_period_info = None
+        if latest_period:
+            quarter_num = (latest_period.period_start.month - 1) // 3 + 1
+            vat_period_info = {
+                "label": f"Q{quarter_num} {latest_period.period_start.year}",
+                "start": latest_period.period_start.isoformat() if latest_period.period_start else None,
+                "end": latest_period.period_end.isoformat() if latest_period.period_end else None,
+                "due_date": latest_period.due_date.isoformat() if latest_period.due_date else None,
+                "status": latest_period.status.value if latest_period.status else None,
+            }
 
         return {
             "client": {
                 "id": client.id,
-                "name": client.clientName,
-                "email": client.email,
-                "entity_type": client.entityType,
-                "vat_scheme": client.vatScheme,
-                "vat_period": {
-                    "label": client.vatPeriodLabel,
-                    "start": client.vatPeriodStart.isoformat() if client.vatPeriodStart else None,
-                    "end": client.vatPeriodEnd.isoformat() if client.vatPeriodEnd else None,
-                },
+                "name": client.name,
+                "email": client.contact_email,
+                "contact_name": client.contact_name,
+                "entity_type": client.entity_type.value if client.entity_type else None,
+                "vat_scheme": client.vat_scheme,
+                "vat_number": client.vat_number,
+                "address": client.address,
                 "notes": client.notes,
-                "created_at": client.createdAt.isoformat() if client.createdAt else None,
+                "created_at": client.created_at.isoformat() if client.created_at else None,
             },
+            "vat_period": vat_period_info,
             "documents": {
                 "total_required": len(required_items),
                 "uploaded": len(uploaded_items),
@@ -211,9 +228,9 @@ class ChatTools:
             },
             "bank_connections": [
                 {
-                    "institution": bc.institutionName,
-                    "account_name": bc.accountName,
-                    "account_type": bc.accountType,
+                    "institution": bc.institution_name,
+                    "account_name": bc.account_name,
+                    "account_type": bc.account_type,
                 }
                 for bc in bank_connections
             ],
@@ -224,10 +241,10 @@ class ChatTools:
         """Search clients by name or email."""
         query_lower = query.lower()
         clients = list(
-            self.db.query(ClientSetup)
+            self.db.query(Client)
             .filter(
-                (ClientSetup.clientName.ilike(f"%{query_lower}%")) |
-                (ClientSetup.email.ilike(f"%{query_lower}%"))
+                (Client.name.ilike(f"%{query_lower}%")) |
+                (Client.contact_email.ilike(f"%{query_lower}%"))
             )
             .limit(10)
             .all()
@@ -240,25 +257,25 @@ class ChatTools:
             "clients": [
                 {
                     "id": c.id,
-                    "name": c.clientName,
-                    "email": c.email,
-                    "entity_type": c.entityType,
-                    "vat_scheme": c.vatScheme,
+                    "name": c.name,
+                    "email": c.contact_email,
+                    "entity_type": c.entity_type.value if c.entity_type else None,
+                    "vat_scheme": c.vat_scheme,
                 }
                 for c in clients
             ],
             "total": len(clients),
         }
 
-    def _tool_get_document_checklist(self, client_id: str) -> dict[str, Any]:
+    def _tool_get_document_checklist(self, client_id: int) -> dict[str, Any]:
         """Get document checklist for a client."""
-        client = self.db.get(ClientSetup, client_id)
+        client = self.db.get(Client, client_id)
         if not client:
             return {"error": f"Client {client_id} not found"}
 
         checklist_items = list(
             self.db.query(ChecklistItem)
-            .filter(ChecklistItem.clientSetupId == client_id)
+            .filter(ChecklistItem.client_id == client_id)
             .all()
         )
 
@@ -271,14 +288,14 @@ class ChatTools:
                 "status": item.status,
                 "status_icon": status_icon,
                 "required": item.required,
-                "has_file": item.uploadedFileUrl is not None,
+                "has_file": item.uploaded_file_url is not None,
             })
 
         required = [i for i in items if i["required"]]
         uploaded = [i for i in required if i["status"] == "uploaded"]
 
         return {
-            "client_name": client.clientName,
+            "client_name": client.name,
             "checklist": items,
             "summary": {
                 "total_items": len(items),
@@ -291,14 +308,14 @@ class ChatTools:
 
     def _tool_get_clients_needing_attention(self) -> dict[str, Any]:
         """Get clients with missing documents."""
-        clients = list(self.db.query(ClientSetup).all())
+        clients = list(self.db.query(Client).all())
 
         needs_attention = []
         for client in clients:
             checklist_items = list(
                 self.db.query(ChecklistItem)
                 .filter(
-                    ChecklistItem.clientSetupId == client.id,
+                    ChecklistItem.client_id == client.id,
                     ChecklistItem.required == True,
                     ChecklistItem.status != "uploaded"
                 )
@@ -308,8 +325,8 @@ class ChatTools:
             if checklist_items:
                 needs_attention.append({
                     "id": client.id,
-                    "name": client.clientName,
-                    "email": client.email,
+                    "name": client.name,
+                    "email": client.contact_email,
                     "missing_documents": len(checklist_items),
                     "missing_items": [item.title for item in checklist_items[:3]],  # Show first 3
                 })
@@ -326,113 +343,119 @@ class ChatTools:
         email: str,
         entity_type: str = "limited_company",
         vat_scheme: str = "standard",
-        vat_period_start: str | None = None,
-        vat_period_end: str | None = None,
+        vat_number: str | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
         """Create a new client."""
         # Check if client with same email already exists
-        existing = self.db.query(ClientSetup).filter(ClientSetup.email == email).first()
+        existing = self.db.query(Client).filter(Client.contact_email == email).first()
         if existing:
             return {
                 "error": f"A client with email '{email}' already exists",
                 "existing_client": {
                     "id": existing.id,
-                    "name": existing.clientName,
-                    "email": existing.email,
+                    "name": existing.name,
+                    "email": existing.contact_email,
                 },
             }
 
-        # Parse dates or use defaults (current quarter)
-        now = datetime.now()
-        if vat_period_start:
-            try:
-                period_start = datetime.fromisoformat(vat_period_start)
-            except ValueError:
-                return {"error": f"Invalid date format for vat_period_start: {vat_period_start}. Use YYYY-MM-DD."}
-        else:
-            # Default to start of current quarter
-            quarter_month = ((now.month - 1) // 3) * 3 + 1
-            period_start = datetime(now.year, quarter_month, 1)
+        # Check if VAT number already exists
+        if vat_number:
+            existing_vat = self.db.query(Client).filter(Client.vat_number == vat_number).first()
+            if existing_vat:
+                return {
+                    "error": f"A client with VAT number '{vat_number}' already exists",
+                    "existing_client": {
+                        "id": existing_vat.id,
+                        "name": existing_vat.name,
+                    },
+                }
 
-        if vat_period_end:
-            try:
-                period_end = datetime.fromisoformat(vat_period_end)
-            except ValueError:
-                return {"error": f"Invalid date format for vat_period_end: {vat_period_end}. Use YYYY-MM-DD."}
-        else:
-            # Default to end of current quarter
-            quarter_end_month = ((now.month - 1) // 3) * 3 + 3
-            if quarter_end_month == 3:
-                period_end = datetime(now.year, 3, 31)
-            elif quarter_end_month == 6:
-                period_end = datetime(now.year, 6, 30)
-            elif quarter_end_month == 9:
-                period_end = datetime(now.year, 9, 30)
-            else:
-                period_end = datetime(now.year, 12, 31)
-
-        # Generate VAT period label
-        quarter_num = (period_start.month - 1) // 3 + 1
-        vat_period_label = f"Q{quarter_num} {period_start.year}"
+        # Map entity type string to enum
+        try:
+            entity_type_enum = EntityType(entity_type)
+        except ValueError:
+            entity_type_enum = EntityType.LIMITED_COMPANY
 
         # Create the client
-        client_id = generate_cuid()
-        client = ClientSetup(
-            id=client_id,
-            email=email,
-            clientName=client_name,
-            entityType=entity_type,
-            vatScheme=vat_scheme,
-            vatPeriodStart=period_start,
-            vatPeriodEnd=period_end,
-            vatPeriodLabel=vat_period_label,
-            bankAccounts=[],
-            salesChannels=[],
+        client = Client(
+            name=client_name,
+            contact_email=email,
+            entity_type=entity_type_enum,
+            vat_scheme=vat_scheme,
+            vat_number=vat_number,
             notes=notes,
+            sales_channels=[],
         )
         self.db.add(client)
+        self.db.flush()  # Get the client ID
+
+        # Create default VAT period (current quarter)
+        now = datetime.now()
+        quarter_month = ((now.month - 1) // 3) * 3 + 1
+        period_start = datetime(now.year, quarter_month, 1)
+
+        quarter_end_month = ((now.month - 1) // 3) * 3 + 3
+        if quarter_end_month == 3:
+            period_end = datetime(now.year, 3, 31)
+        elif quarter_end_month == 6:
+            period_end = datetime(now.year, 6, 30)
+        elif quarter_end_month == 9:
+            period_end = datetime(now.year, 9, 30)
+        else:
+            period_end = datetime(now.year, 12, 31)
+
+        vat_period = VATPeriod(
+            client_id=client.id,
+            period_start=period_start.date(),
+            period_end=period_end.date(),
+            status=PeriodStatus.DRAFT,
+            is_locked=False,
+        )
+        self.db.add(vat_period)
 
         # Create default checklist items
         default_checklist = [
-            {"itemId": "bank_statements", "title": "Bank Statements", "required": True},
-            {"itemId": "sales_invoices", "title": "Sales Invoices", "required": True},
-            {"itemId": "purchase_invoices", "title": "Purchase Invoices", "required": True},
-            {"itemId": "expense_receipts", "title": "Expense Receipts", "required": True},
-            {"itemId": "payroll_records", "title": "Payroll Records", "required": False},
+            {"item_id": "bank_statements", "title": "Bank Statements", "required": True},
+            {"item_id": "sales_invoices", "title": "Sales Invoices", "required": True},
+            {"item_id": "purchase_invoices", "title": "Purchase Invoices", "required": True},
+            {"item_id": "expense_receipts", "title": "Expense Receipts", "required": True},
+            {"item_id": "payroll_records", "title": "Payroll Records", "required": False},
         ]
 
         for item in default_checklist:
             checklist_item = ChecklistItem(
-                id=generate_cuid(),
-                clientSetupId=client_id,
-                itemId=item["itemId"],
+                client_id=client.id,
+                item_id=item["item_id"],
                 title=item["title"],
                 required=item["required"],
                 status="missing",
                 acceptance="required" if item["required"] else "optional",
-                ctaAction="request_upload",
+                cta_action="request_upload",
             )
             self.db.add(checklist_item)
 
         self.db.commit()
         self.db.refresh(client)
 
+        quarter_num = (period_start.month - 1) // 3 + 1
+        vat_period_label = f"Q{quarter_num} {period_start.year}"
+
         return {
             "success": True,
             "message": f"Client '{client_name}' created successfully",
             "client": {
                 "id": client.id,
-                "name": client.clientName,
-                "email": client.email,
-                "entity_type": client.entityType,
-                "vat_scheme": client.vatScheme,
+                "name": client.name,
+                "email": client.contact_email,
+                "entity_type": client.entity_type.value,
+                "vat_scheme": client.vat_scheme,
                 "vat_period": vat_period_label,
             },
             "onboarding_link": f"/onboard/{client.id}",
         }
 
-    def _tool_update_checklist_item(self, item_id: str, status: str) -> dict[str, Any]:
+    def _tool_update_checklist_item(self, item_id: int, status: str) -> dict[str, Any]:
         """Update a checklist item status."""
         item = self.db.get(ChecklistItem, item_id)
         if not item:
@@ -443,7 +466,6 @@ class ChatTools:
             return {"error": f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"}
 
         item.status = status
-        item.updatedAt = datetime.now()
         self.db.commit()
 
         return {

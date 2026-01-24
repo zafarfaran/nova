@@ -24,15 +24,15 @@ const ChecklistItemSchema = z.object({
     cta: CTASchema,
 });
 
-const ClientSetupSchema = z.object({
+const ClientSchema = z.object({
     email: z.string().email(),
     client_name: z.string(),
     entity_type: z.string(),
     vat_scheme: z.string(),
     vat_period: VatPeriodSchema,
-    bank_accounts: z.array(z.string()),
-    sales_channels: z.array(z.string()),
+    sales_channels: z.array(z.string()).optional(),
     notes: z.string().optional(),
+    vat_number: z.string().optional(),
 });
 
 const AutoChaserSchema = z.object({
@@ -42,10 +42,24 @@ const AutoChaserSchema = z.object({
 });
 
 const WebhookPayloadSchema = z.object({
-    client_setup: ClientSetupSchema,
+    client_setup: ClientSchema,
     checklist: z.array(ChecklistItemSchema),
     auto_chasers: z.array(AutoChaserSchema),
 });
+
+// Map entity type string to enum value
+function mapEntityType(entityType: string): "SOLE_TRADER" | "PARTNERSHIP" | "LLP" | "LIMITED_COMPANY" | "PLC" | "CHARITY" | "OTHER" {
+    const mapping: Record<string, "SOLE_TRADER" | "PARTNERSHIP" | "LLP" | "LIMITED_COMPANY" | "PLC" | "CHARITY" | "OTHER"> = {
+        sole_trader: "SOLE_TRADER",
+        partnership: "PARTNERSHIP",
+        llp: "LLP",
+        limited_company: "LIMITED_COMPANY",
+        plc: "PLC",
+        charity: "CHARITY",
+        other: "OTHER",
+    };
+    return mapping[entityType.toLowerCase()] || "LIMITED_COMPANY";
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -53,24 +67,26 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const validatedData = WebhookPayloadSchema.parse(body);
 
-        // Create the client setup record
-        const clientSetup = await db.clientSetup.create({
+        // Create the client record
+        const client = await db.client.create({
             data: {
-                id: crypto.randomUUID(),
-                email: validatedData.client_setup.email,
-                clientName: validatedData.client_setup.client_name,
-                entityType: validatedData.client_setup.entity_type,
+                name: validatedData.client_setup.client_name,
+                contactEmail: validatedData.client_setup.email,
+                entityType: mapEntityType(validatedData.client_setup.entity_type),
                 vatScheme: validatedData.client_setup.vat_scheme,
-                vatPeriodStart: new Date(validatedData.client_setup.vat_period.start),
-                vatPeriodEnd: new Date(validatedData.client_setup.vat_period.end),
-                vatPeriodLabel: validatedData.client_setup.vat_period.label,
-                bankAccounts: validatedData.client_setup.bank_accounts,
-                salesChannels: validatedData.client_setup.sales_channels,
+                vatNumber: validatedData.client_setup.vat_number,
+                salesChannels: validatedData.client_setup.sales_channels || [],
                 notes: validatedData.client_setup.notes,
-                updatedAt: new Date(),
-                ChecklistItem: {
+                vatPeriods: {
+                    create: {
+                        periodStart: new Date(validatedData.client_setup.vat_period.start),
+                        periodEnd: new Date(validatedData.client_setup.vat_period.end),
+                        status: "DRAFT",
+                        isLocked: false,
+                    },
+                },
+                checklistItems: {
                     create: validatedData.checklist.map((item) => ({
-                        id: crypto.randomUUID(),
                         itemId: item.id,
                         title: item.title,
                         required: item.required,
@@ -78,12 +94,10 @@ export async function POST(request: NextRequest) {
                         acceptance: item.acceptance,
                         ctaAction: item.cta.action,
                         ctaData: JSON.stringify(item.cta),
-                        updatedAt: new Date(),
                     })),
                 },
-                AutoChaser: {
+                autoChasers: {
                     create: validatedData.auto_chasers.map((chaser) => ({
-                        id: crypto.randomUUID(),
                         trigger: chaser.trigger,
                         delayDays: chaser.delay_days,
                         message: chaser.message,
@@ -94,17 +108,17 @@ export async function POST(request: NextRequest) {
 
         // Generate the onboarding link
         const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-        const onboardingLink = `${baseUrl}/onboard/${clientSetup.id}`;
+        const onboardingLink = `${baseUrl}/onboard/${client.id}`;
 
         return NextResponse.json(
             {
                 success: true,
-                message: "Client setup created successfully",
+                message: "Client created successfully",
                 data: {
-                    client_id: clientSetup.id,
+                    client_id: client.id,
                     onboarding_link: onboardingLink,
-                    email: clientSetup.email,
-                    client_name: clientSetup.clientName,
+                    email: client.contactEmail,
+                    client_name: client.name,
                 },
             },
             { status: 201 }
@@ -121,7 +135,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.error("Error creating client setup:", error);
+        console.error("Error creating client:", error);
         return NextResponse.json(
             {
                 success: false,

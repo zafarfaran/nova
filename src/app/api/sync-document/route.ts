@@ -6,8 +6,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // Schema for the sync request
 const SyncDocumentSchema = z.object({
-    clientSetupId: z.string(),
-    checklistItemId: z.string(),
+    clientId: z.number(),
+    checklistItemId: z.number(),
     filename: z.string(),
     fileUrl: z.string().url(),
     fileSize: z.number().optional(),
@@ -19,34 +19,23 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const validatedData = SyncDocumentSchema.parse(body);
 
-        // Get the client setup to check for backendClientId
-        const clientSetup = await db.clientSetup.findUnique({
-            where: { id: validatedData.clientSetupId },
+        // Get the client to verify it exists
+        const client = await db.client.findUnique({
+            where: { id: validatedData.clientId },
             select: {
-                backendClientId: true,
-                clientName: true,
+                id: true,
+                name: true,
             },
         });
 
-        if (!clientSetup) {
+        if (!client) {
             return NextResponse.json(
-                { success: false, error: "Client setup not found" },
+                { success: false, error: "Client not found" },
                 { status: 404 }
             );
         }
 
-        // If no backend client is linked, just return success
-        // Document is stored in UploadThing and tracked by Prisma
-        if (!clientSetup.backendClientId) {
-            return NextResponse.json({
-                success: true,
-                synced: false,
-                message: "No backend client linked, document stored locally only",
-            });
-        }
-
-        // Sync to backend - first we need to find or create an evidence item
-        // For now, we'll create a document record in the backend
+        // Sync to backend
         try {
             const response = await fetch(`${API_BASE_URL}/api/v1/documents/sync`, {
                 method: "POST",
@@ -58,8 +47,7 @@ export async function POST(request: NextRequest) {
                     external_url: validatedData.fileUrl,
                     file_size: validatedData.fileSize,
                     content_type: validatedData.contentType,
-                    client_id: clientSetup.backendClientId,
-                    // evidence_item_id will be null - backend can link it later
+                    client_id: client.id,
                 }),
             });
 

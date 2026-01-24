@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { ChecklistItem } from "@prisma/client";
 
 interface SubmitButtonProps {
-    clientId: string;
+    clientId: number;
     checklistItems: ChecklistItem[];
 }
 

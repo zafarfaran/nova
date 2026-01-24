@@ -4,12 +4,16 @@ import enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, String
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.vat_period import VATPeriod
+    from app.models.bank_connection import BankConnection
+    from app.models.auto_chaser import AutoChaser
+    from app.models.checklist_item import ChecklistItem
 
 
 class EntityType(str, enum.Enum):
@@ -39,10 +43,21 @@ class Client(Base, TimestampMixin):
     contact_name: Mapped[str | None] = mapped_column(String(255))
     address: Mapped[str | None] = mapped_column(String(500))
     notes: Mapped[str | None] = mapped_column(String(2000))
+    vat_scheme: Mapped[str | None] = mapped_column(String(50))
+    sales_channels: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
 
     # Relationships
     vat_periods: Mapped[list["VATPeriod"]] = relationship(
         "VATPeriod", back_populates="client", cascade="all, delete-orphan"
+    )
+    bank_connections: Mapped[list["BankConnection"]] = relationship(
+        "BankConnection", back_populates="client", cascade="all, delete-orphan"
+    )
+    auto_chasers: Mapped[list["AutoChaser"]] = relationship(
+        "AutoChaser", back_populates="client", cascade="all, delete-orphan"
+    )
+    checklist_items: Mapped[list["ChecklistItem"]] = relationship(
+        "ChecklistItem", back_populates="client", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

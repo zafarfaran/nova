@@ -9,18 +9,23 @@ datasource db {
 }
 
 model Client {
-  id           Int           @id @default(autoincrement())
-  name         String        @db.VarChar(255)
-  vatNumber    String?       @unique @map("vat_number") @db.VarChar(20)
-  entityType   entitytype    @map("entity_type")
-  contactEmail String?       @map("contact_email") @db.VarChar(255)
-  contactName  String?       @map("contact_name") @db.VarChar(255)
-  address      String?       @db.VarChar(500)
-  notes        String?       @db.VarChar(2000)
-  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  chatSessions ChatSession[]
-  vatPeriods   VATPeriod[]
+  id              Int              @id @default(autoincrement())
+  name            String           @db.VarChar(255)
+  vatNumber       String?          @unique @map("vat_number") @db.VarChar(20)
+  entityType      entitytype       @map("entity_type")
+  contactEmail    String?          @map("contact_email") @db.VarChar(255)
+  contactName     String?          @map("contact_name") @db.VarChar(255)
+  address         String?          @db.VarChar(500)
+  notes           String?          @db.VarChar(2000)
+  vatScheme       String?          @map("vat_scheme") @db.VarChar(50)
+  salesChannels   String[]         @default([]) @map("sales_channels")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  chatSessions    ChatSession[]
+  vatPeriods      VATPeriod[]
+  bankConnections BankConnection[]
+  autoChasers     AutoChaser[]
+  checklistItems  ChecklistItem[]
 
   @@map("clients")
 }
@@ -212,78 +217,60 @@ model Account {
 }
 
 model AutoChaser {
-  id            String      @id
-  clientSetupId String
-  trigger       String
-  delayDays     Int
-  message       String
-  createdAt     DateTime    @default(now())
-  ClientSetup   ClientSetup @relation(fields: [clientSetupId], references: [id], onDelete: Cascade)
+  id        Int      @id @default(autoincrement())
+  clientId  Int      @map("client_id")
+  trigger   String   @db.VarChar(50)
+  delayDays Int      @map("delay_days")
+  message   String   @db.VarChar(2000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([clientSetupId])
+  @@index([clientId])
+  @@map("auto_chasers")
 }
 
 model BankConnection {
-  id               String      @id
-  clientSetupId    String
-  plaidAccessToken String
-  plaidItemId      String
-  accountId        String
-  accountName      String
-  accountMask      String?
-  accountType      String
-  accountSubtype   String?
-  institutionName  String
-  institutionId    String
-  isActive         Boolean     @default(true)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime
-  ClientSetup      ClientSetup @relation(fields: [clientSetupId], references: [id], onDelete: Cascade)
+  id               Int      @id @default(autoincrement())
+  clientId         Int      @map("client_id")
+  plaidAccessToken String   @map("plaid_access_token") @db.VarChar(255)
+  plaidItemId      String   @map("plaid_item_id") @db.VarChar(100)
+  accountId        String   @map("account_id") @db.VarChar(100)
+  accountName      String   @map("account_name") @db.VarChar(255)
+  accountMask      String?  @map("account_mask") @db.VarChar(10)
+  accountType      String   @map("account_type") @db.VarChar(50)
+  accountSubtype   String?  @map("account_subtype") @db.VarChar(50)
+  institutionName  String   @map("institution_name") @db.VarChar(255)
+  institutionId    String   @map("institution_id") @db.VarChar(100)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([clientSetupId])
+  @@index([clientId])
   @@index([plaidItemId])
+  @@map("bank_connections")
 }
 
 model ChecklistItem {
-  id              String      @id
-  clientSetupId   String
-  itemId          String
-  title           String
+  id              Int      @id @default(autoincrement())
+  clientId        Int      @map("client_id")
+  itemId          String   @map("item_id") @db.VarChar(100)
+  title           String   @db.VarChar(255)
   required        Boolean
-  status          String
-  acceptance      String
-  ctaAction       String
-  ctaData         String?
-  uploadedFileUrl String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime
-  ClientSetup     ClientSetup @relation(fields: [clientSetupId], references: [id], onDelete: Cascade)
+  status          String   @db.VarChar(50)
+  acceptance      String   @db.VarChar(50)
+  ctaAction       String   @map("cta_action") @db.VarChar(50)
+  ctaData         String?  @map("cta_data") @db.VarChar(2000)
+  uploadedFileUrl String?  @map("uploaded_file_url") @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([clientSetupId])
+  @@index([clientId])
+  @@map("checklist_items")
 }
 
-model ClientSetup {
-  id              String           @id
-  email           String
-  clientName      String
-  entityType      String
-  vatScheme       String
-  vatPeriodStart  DateTime
-  vatPeriodEnd    DateTime
-  vatPeriodLabel  String
-  bankAccounts    String[]
-  salesChannels   String[]
-  notes           String?
-  backendClientId Int?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime
-  AutoChaser      AutoChaser[]
-  BankConnection  BankConnection[]
-  ChecklistItem   ChecklistItem[]
-
-  @@index([email])
-  @@index([backendClientId])
-}
 
 model Post {
   id          Int      @id @default(autoincrement())
