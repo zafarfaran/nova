@@ -234,7 +234,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/Users/faran.zafar/Desktop/projects/nova/frontend/nova/generated/prisma",
+      "value": "/Users/faran.zafar/Desktop/projects/nova/generated/prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -248,12 +248,11 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/Users/faran.zafar/Desktop/projects/nova/frontend/nova/prisma/schema.prisma",
+    "sourceFilePath": "/Users/faran.zafar/Desktop/projects/nova/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
-    "rootEnvPath": null,
-    "schemaEnvPath": "../../.env"
+    "rootEnvPath": null
   },
   "relativePath": "../../prisma",
   "clientVersion": "6.19.2",
