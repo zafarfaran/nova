@@ -1,0 +1,78 @@
+{
+    "client_setup": {
+        "email": "asdjkalsf@gmail.com",
+        "client_name": "ABC Joinery Ltd",
+        "entity_type": "Ltd",
+        "vat_scheme": "Standard",
+        "vat_period": {
+            "start": "2026-04-01",
+            "end": "2026-06-30",
+            "label": "VAT QE 30/06/2026"
+        },
+        "bank_accounts": [
+            "Barclays Business (****1234)"
+        ],
+        "sales_channels": [
+            "Invoices (Xero)"
+        ],
+        "notes": "No imports. No reverse charge."
+    },
+    "checklist": [
+        {
+            "id": "bank_statements",
+            "title": "Bank statements (full quarter)",
+            "required": true,
+            "status": "missing",
+            "acceptance": "Statements cover the entire period with no gaps",
+            "cta": {
+                "action": "request_upload",
+                "upload_type": "bank_statement"
+            }
+        },
+        {
+            "id": "sales_invoices",
+            "title": "Sales invoices / sales report (quarter)",
+            "required": true,
+            "status": "missing",
+            "acceptance": "Sales evidence covers the full period",
+            "cta": {
+                "action": "request_upload",
+                "upload_type": "sales_invoice_or_report"
+            }
+        },
+        {
+            "id": "purchase_invoices",
+            "title": "Purchase invoices/receipts (VAT to reclaim)",
+            "required": true,
+            "status": "missing",
+            "acceptance": "Invoices/receipts show VAT amount or VAT rate and date in period",
+            "cta": {
+                "action": "request_upload",
+                "upload_type": "purchase_invoice_or_receipt"
+            }
+        },
+        {
+            "id": "credit_notes",
+            "title": "Credit notes (if any)",
+            "required": false,
+            "status": "unknown",
+            "acceptance": "If credit notes exist, include them",
+            "cta": {
+                "action": "ask_confirm",
+                "question": "Any sales or purchase credit notes this quarter?"
+            }
+        }
+    ],
+    "auto_chasers": [
+        {
+            "trigger": "item_missing",
+            "delay_days": 3,
+            "message": "To complete your VAT pack for VAT QE 30/06/2026, please upload: {missing_items}. Upload link: {upload_link}"
+        },
+        {
+            "trigger": "item_missing",
+            "delay_days": 7,
+            "message": "Reminder: we still need {missing_items} to finish VAT QE 30/06/2026. Upload link: {upload_link}"
+        }
+    ]
+}
