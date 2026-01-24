@@ -1,4 +1,6 @@
 # Environment variables - NEVER commit these
+generated
+.next
 .env
 .env.local
 .env.*.local

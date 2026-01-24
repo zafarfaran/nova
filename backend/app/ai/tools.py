@@ -1,16 +1,12 @@
-"""AI tools/functions for the chat interface."""
+"""AI tools/functions for the chat interface - using Prisma schema."""
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.client import Client
-from app.models.document import Document, DocumentStatus
-from app.models.evidence import EvidenceItem
-from app.models.vat_period import VATPeriod
-from app.services.chaser_service import ChaserService
-from app.services.evidence_service import EvidenceService
-from app.services.validation_service import ValidationService
+from app.models.client_setup import ClientSetup, ChecklistItem, BankConnection, generate_cuid
+
 
 # Tool definitions for function calling
 TOOL_DEFINITIONS = [
@@ -24,13 +20,13 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "name": "get_client_status",
-        "description": "Get the current status of a specific client including their VAT periods and overall progress",
+        "name": "get_client_details",
+        "description": "Get detailed information about a specific client including their VAT info, document checklist status, and bank connections",
         "parameters": {
             "type": "object",
             "properties": {
                 "client_id": {
-                    "type": "integer",
+                    "type": "string",
                     "description": "The ID of the client",
                 },
             },
@@ -38,141 +34,106 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "name": "get_vat_period_status",
-        "description": "Get detailed status of a VAT period including evidence coverage, gaps, and validation summary",
+        "name": "search_clients",
+        "description": "Search for clients by name or email",
         "parameters": {
             "type": "object",
             "properties": {
-                "period_id": {
-                    "type": "integer",
-                    "description": "The ID of the VAT period",
-                },
-            },
-            "required": ["period_id"],
-        },
-    },
-    {
-        "name": "generate_document_checklist",
-        "description": "Generate a checklist of required documents for a VAT period, showing what's received and what's missing",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "period_id": {
-                    "type": "integer",
-                    "description": "The ID of the VAT period",
-                },
-            },
-            "required": ["period_id"],
-        },
-    },
-    {
-        "name": "get_missing_documents",
-        "description": "Get a list of missing documents/evidence for a VAT period",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "period_id": {
-                    "type": "integer",
-                    "description": "The ID of the VAT period",
-                },
-            },
-            "required": ["period_id"],
-        },
-    },
-    {
-        "name": "get_validation_issues",
-        "description": "Get all validation issues/failures for a VAT period",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "period_id": {
-                    "type": "integer",
-                    "description": "The ID of the VAT period",
-                },
-            },
-            "required": ["period_id"],
-        },
-    },
-    {
-        "name": "create_chaser_request",
-        "description": "Create a chaser request to ask for missing documents from a client",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "period_id": {
-                    "type": "integer",
-                    "description": "The ID of the VAT period",
-                },
-                "recipient_email": {
+                "query": {
                     "type": "string",
-                    "description": "Email address to send the chaser to",
+                    "description": "Search term to find clients by name or email",
                 },
             },
-            "required": ["period_id", "recipient_email"],
+            "required": ["query"],
         },
     },
     {
-        "name": "get_recent_uploads",
-        "description": "Get recently uploaded documents for a VAT period",
+        "name": "get_document_checklist",
+        "description": "Get the document checklist status for a client, showing what documents are uploaded and what's missing",
         "parameters": {
             "type": "object",
             "properties": {
-                "period_id": {
-                    "type": "integer",
-                    "description": "The ID of the VAT period",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of documents to return (default 10)",
+                "client_id": {
+                    "type": "string",
+                    "description": "The ID of the client",
                 },
             },
-            "required": ["period_id"],
+            "required": ["client_id"],
+        },
+    },
+    {
+        "name": "get_clients_needing_attention",
+        "description": "Get a list of clients who have missing documents or need follow-up",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
     {
         "name": "create_client",
-        "description": "Create a new client in the system. Requires at minimum the client name. Before calling this tool, ensure you have gathered all available information from the user. If the user hasn't provided key details like VAT number, entity type, or contact email, ask them first before creating the client.",
+        "description": "Create a new client in the system. Requires client name and email at minimum. Ask the user for VAT scheme and entity type if not provided.",
         "parameters": {
             "type": "object",
             "properties": {
-                "name": {
+                "client_name": {
                     "type": "string",
                     "description": "The name of the client/business (required)",
                 },
-                "vat_number": {
+                "email": {
                     "type": "string",
-                    "description": "The client's VAT registration number (e.g., GB123456789)",
+                    "description": "The client's email address (required)",
                 },
                 "entity_type": {
                     "type": "string",
                     "enum": ["sole_trader", "partnership", "llp", "limited_company", "plc", "charity", "other"],
-                    "description": "The type of business entity. Options: sole_trader, partnership, llp, limited_company, plc, charity, other",
+                    "description": "The type of business entity",
                 },
-                "contact_email": {
+                "vat_scheme": {
                     "type": "string",
-                    "description": "Primary contact email address for the client",
+                    "enum": ["standard", "flat_rate", "cash_accounting", "annual_accounting"],
+                    "description": "The VAT scheme the client uses",
                 },
-                "contact_name": {
+                "vat_period_start": {
                     "type": "string",
-                    "description": "Name of the primary contact person",
+                    "description": "Start date of current VAT period (YYYY-MM-DD format)",
                 },
-                "address": {
+                "vat_period_end": {
                     "type": "string",
-                    "description": "Business address",
+                    "description": "End date of current VAT period (YYYY-MM-DD format)",
                 },
                 "notes": {
                     "type": "string",
                     "description": "Any additional notes about the client",
                 },
             },
-            "required": ["name"],
+            "required": ["client_name", "email"],
+        },
+    },
+    {
+        "name": "update_checklist_item",
+        "description": "Update the status of a checklist item (e.g., mark as uploaded or missing)",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "item_id": {
+                    "type": "string",
+                    "description": "The ID of the checklist item",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["missing", "uploaded", "unknown"],
+                    "description": "The new status for the item",
+                },
+            },
+            "required": ["item_id", "status"],
         },
     },
 ]
 
 
 class ChatTools:
-    """Executor for chat tools."""
+    """Executor for chat tools using Prisma schema."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -189,301 +150,308 @@ class ChatTools:
 
     def _tool_list_clients(self) -> dict[str, Any]:
         """List all clients."""
-        clients = list(self.db.query(Client).all())
+        clients = list(self.db.query(ClientSetup).order_by(ClientSetup.updatedAt.desc()).all())
         return {
             "clients": [
                 {
                     "id": c.id,
-                    "name": c.name,
-                    "vat_number": c.vat_number,
-                    "entity_type": c.entity_type.value,
-                    "contact_email": c.contact_email,
+                    "name": c.clientName,
+                    "email": c.email,
+                    "entity_type": c.entityType,
+                    "vat_scheme": c.vatScheme,
+                    "vat_period": c.vatPeriodLabel,
                 }
                 for c in clients
             ],
             "total": len(clients),
         }
 
-    def _tool_get_client_status(self, client_id: int) -> dict[str, Any]:
-        """Get client status with VAT periods."""
-        client = self.db.get(Client, client_id)
+    def _tool_get_client_details(self, client_id: str) -> dict[str, Any]:
+        """Get detailed client information."""
+        client = self.db.get(ClientSetup, client_id)
         if not client:
             return {"error": f"Client {client_id} not found"}
 
-        periods = list(
-            self.db.query(VATPeriod).filter(VATPeriod.client_id == client_id).all()
+        # Get checklist summary
+        checklist_items = list(
+            self.db.query(ChecklistItem)
+            .filter(ChecklistItem.clientSetupId == client_id)
+            .all()
         )
+        required_items = [i for i in checklist_items if i.required]
+        uploaded_items = [i for i in required_items if i.status == "uploaded"]
 
-        period_summaries = []
-        for period in periods:
-            evidence_service = EvidenceService(self.db)
-            coverage = evidence_service.get_coverage(period.id)
-            period_summaries.append({
-                "id": period.id,
-                "period": f"{period.period_start} to {period.period_end}",
-                "status": period.status.value,
-                "coverage_percentage": coverage.overall_coverage_percentage,
-                "is_complete": coverage.is_complete,
-            })
+        # Get bank connections
+        bank_connections = list(
+            self.db.query(BankConnection)
+            .filter(BankConnection.clientSetupId == client_id, BankConnection.isActive == True)
+            .all()
+        )
 
         return {
             "client": {
                 "id": client.id,
-                "name": client.name,
-                "vat_number": client.vat_number,
+                "name": client.clientName,
+                "email": client.email,
+                "entity_type": client.entityType,
+                "vat_scheme": client.vatScheme,
+                "vat_period": {
+                    "label": client.vatPeriodLabel,
+                    "start": client.vatPeriodStart.isoformat() if client.vatPeriodStart else None,
+                    "end": client.vatPeriodEnd.isoformat() if client.vatPeriodEnd else None,
+                },
+                "notes": client.notes,
+                "created_at": client.createdAt.isoformat() if client.createdAt else None,
             },
-            "vat_periods": period_summaries,
-            "total_periods": len(periods),
+            "documents": {
+                "total_required": len(required_items),
+                "uploaded": len(uploaded_items),
+                "missing": len(required_items) - len(uploaded_items),
+                "completion_percentage": round(len(uploaded_items) / len(required_items) * 100) if required_items else 100,
+            },
+            "bank_connections": [
+                {
+                    "institution": bc.institutionName,
+                    "account_name": bc.accountName,
+                    "account_type": bc.accountType,
+                }
+                for bc in bank_connections
+            ],
+            "has_bank_connected": len(bank_connections) > 0,
         }
 
-    def _tool_get_vat_period_status(self, period_id: int) -> dict[str, Any]:
-        """Get detailed VAT period status."""
-        period = self.db.get(VATPeriod, period_id)
-        if not period:
-            return {"error": f"VAT period {period_id} not found"}
-
-        client = self.db.get(Client, period.client_id)
-        evidence_service = EvidenceService(self.db)
-        validation_service = ValidationService(self.db)
-
-        coverage = evidence_service.get_coverage(period_id)
-        gaps = evidence_service.get_gaps(period_id)
-        validation_summary = validation_service.get_validation_summary(period_id)
-
-        return {
-            "period": {
-                "id": period.id,
-                "client_name": client.name if client else "Unknown",
-                "start": str(period.period_start),
-                "end": str(period.period_end),
-                "status": period.status.value,
-                "is_locked": period.is_locked,
-            },
-            "coverage": {
-                "overall_percentage": coverage.overall_coverage_percentage,
-                "total_expected": coverage.total_expected,
-                "total_received": coverage.total_received,
-                "is_complete": coverage.is_complete,
-            },
-            "gaps": {
-                "total_missing": gaps.total_missing,
-                "gap_count": len(gaps.gaps),
-            },
-            "validation": {
-                "total_documents": validation_summary["total_documents"],
-                "validated": validation_summary["validated_documents"],
-                "failed": validation_summary["failed_documents"],
-                "pending": validation_summary["pending_documents"],
-            },
-        }
-
-    def _tool_generate_document_checklist(self, period_id: int) -> dict[str, Any]:
-        """Generate document checklist."""
-        period = self.db.get(VATPeriod, period_id)
-        if not period:
-            return {"error": f"VAT period {period_id} not found"}
-
-        evidence_items = list(
-            self.db.query(EvidenceItem)
-            .filter(EvidenceItem.vat_period_id == period_id)
+    def _tool_search_clients(self, query: str) -> dict[str, Any]:
+        """Search clients by name or email."""
+        query_lower = query.lower()
+        clients = list(
+            self.db.query(ClientSetup)
+            .filter(
+                (ClientSetup.clientName.ilike(f"%{query_lower}%")) |
+                (ClientSetup.email.ilike(f"%{query_lower}%"))
+            )
+            .limit(10)
             .all()
         )
 
-        checklist = []
-        for item in evidence_items:
-            status_icon = "✅" if item.is_complete else ("🔶" if item.received_count > 0 else "❌")
-            checklist.append({
-                "category": item.category.value.replace("_", " ").title(),
-                "status": status_icon,
-                "expected": item.expected_count,
-                "received": item.received_count,
-                "missing": max(0, item.expected_count - item.received_count),
-                "coverage": f"{item.coverage_percentage:.0f}%",
-            })
+        if not clients:
+            return {"message": f"No clients found matching '{query}'", "clients": [], "total": 0}
 
         return {
-            "period": f"{period.period_start} to {period.period_end}",
-            "checklist": checklist,
+            "clients": [
+                {
+                    "id": c.id,
+                    "name": c.clientName,
+                    "email": c.email,
+                    "entity_type": c.entityType,
+                    "vat_scheme": c.vatScheme,
+                }
+                for c in clients
+            ],
+            "total": len(clients),
+        }
+
+    def _tool_get_document_checklist(self, client_id: str) -> dict[str, Any]:
+        """Get document checklist for a client."""
+        client = self.db.get(ClientSetup, client_id)
+        if not client:
+            return {"error": f"Client {client_id} not found"}
+
+        checklist_items = list(
+            self.db.query(ChecklistItem)
+            .filter(ChecklistItem.clientSetupId == client_id)
+            .all()
+        )
+
+        items = []
+        for item in checklist_items:
+            status_icon = "✅" if item.status == "uploaded" else ("⏳" if item.status == "unknown" else "❌")
+            items.append({
+                "id": item.id,
+                "title": item.title,
+                "status": item.status,
+                "status_icon": status_icon,
+                "required": item.required,
+                "has_file": item.uploadedFileUrl is not None,
+            })
+
+        required = [i for i in items if i["required"]]
+        uploaded = [i for i in required if i["status"] == "uploaded"]
+
+        return {
+            "client_name": client.clientName,
+            "checklist": items,
             "summary": {
-                "total_categories": len(checklist),
-                "complete": sum(1 for c in checklist if c["status"] == "✅"),
-                "partial": sum(1 for c in checklist if c["status"] == "🔶"),
-                "missing": sum(1 for c in checklist if c["status"] == "❌"),
+                "total_items": len(items),
+                "required_items": len(required),
+                "uploaded": len(uploaded),
+                "missing": len(required) - len(uploaded),
+                "completion_percentage": round(len(uploaded) / len(required) * 100) if required else 100,
             },
         }
 
-    def _tool_get_missing_documents(self, period_id: int) -> dict[str, Any]:
-        """Get missing documents."""
-        evidence_service = EvidenceService(self.db)
-        gaps = evidence_service.get_gaps(period_id)
+    def _tool_get_clients_needing_attention(self) -> dict[str, Any]:
+        """Get clients with missing documents."""
+        clients = list(self.db.query(ClientSetup).all())
 
-        return {
-            "period_id": period_id,
-            "missing_items": [
-                {
-                    "category": gap.category.value.replace("_", " ").title(),
-                    "missing_count": gap.missing_count,
-                    "description": gap.description,
-                }
-                for gap in gaps.gaps
-            ],
-            "total_missing": gaps.total_missing,
-        }
-
-    def _tool_get_validation_issues(self, period_id: int) -> dict[str, Any]:
-        """Get validation issues."""
-        from sqlalchemy import select
-        from app.models.validation import ValidationResult, ValidationStatus
-
-        # Get all failed/warning validations for the period
-        stmt = (
-            select(ValidationResult)
-            .join(Document)
-            .join(EvidenceItem)
-            .where(
-                EvidenceItem.vat_period_id == period_id,
-                ValidationResult.status.in_([ValidationStatus.FAILED, ValidationStatus.WARNING]),
+        needs_attention = []
+        for client in clients:
+            checklist_items = list(
+                self.db.query(ChecklistItem)
+                .filter(
+                    ChecklistItem.clientSetupId == client.id,
+                    ChecklistItem.required == True,
+                    ChecklistItem.status != "uploaded"
+                )
+                .all()
             )
-        )
-        issues = list(self.db.scalars(stmt).all())
+
+            if checklist_items:
+                needs_attention.append({
+                    "id": client.id,
+                    "name": client.clientName,
+                    "email": client.email,
+                    "missing_documents": len(checklist_items),
+                    "missing_items": [item.title for item in checklist_items[:3]],  # Show first 3
+                })
 
         return {
-            "period_id": period_id,
-            "issues": [
-                {
-                    "document_id": issue.document_id,
-                    "rule": issue.rule_type.value,
-                    "status": issue.status.value,
-                    "message": issue.message,
-                }
-                for issue in issues
-            ],
-            "total_issues": len(issues),
-        }
-
-    def _tool_create_chaser_request(
-        self, period_id: int, recipient_email: str
-    ) -> dict[str, Any]:
-        """Create a chaser request."""
-        chaser_service = ChaserService(self.db)
-        chaser = chaser_service.auto_chase(period_id, recipient_email)
-
-        if not chaser:
-            return {"message": "No gaps found - nothing to chase!"}
-
-        return {
-            "chaser_id": chaser.id,
-            "recipient": chaser.recipient_email,
-            "items_requested": chaser.requested_items,
-            "upload_token": chaser.upload_token,
-            "message": f"Chaser created for {len(chaser.requested_items)} missing items",
-        }
-
-    def _tool_get_recent_uploads(
-        self, period_id: int, limit: int = 10
-    ) -> dict[str, Any]:
-        """Get recent uploads."""
-        from sqlalchemy import select
-
-        stmt = (
-            select(Document)
-            .join(EvidenceItem)
-            .where(EvidenceItem.vat_period_id == period_id)
-            .order_by(Document.created_at.desc())
-            .limit(limit)
-        )
-        documents = list(self.db.scalars(stmt).all())
-
-        return {
-            "period_id": period_id,
-            "recent_documents": [
-                {
-                    "id": doc.id,
-                    "filename": doc.filename,
-                    "status": doc.status.value,
-                    "invoice_number": doc.invoice_number,
-                    "supplier": doc.supplier_name,
-                    "amount": str(doc.gross_amount) if doc.gross_amount else None,
-                    "uploaded_at": doc.created_at.isoformat(),
-                }
-                for doc in documents
-            ],
-            "count": len(documents),
+            "clients_needing_attention": needs_attention,
+            "total": len(needs_attention),
+            "message": f"{len(needs_attention)} client(s) have missing documents" if needs_attention else "All clients are up to date!",
         }
 
     def _tool_create_client(
         self,
-        name: str,
-        vat_number: str | None = None,
-        entity_type: str | None = None,
-        contact_email: str | None = None,
-        contact_name: str | None = None,
-        address: str | None = None,
+        client_name: str,
+        email: str,
+        entity_type: str = "limited_company",
+        vat_scheme: str = "standard",
+        vat_period_start: str | None = None,
+        vat_period_end: str | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
         """Create a new client."""
-        from app.models.client import EntityType
-
-        # Check if client with same name already exists
-        existing = self.db.query(Client).filter(Client.name == name).first()
+        # Check if client with same email already exists
+        existing = self.db.query(ClientSetup).filter(ClientSetup.email == email).first()
         if existing:
             return {
-                "error": f"A client with the name '{name}' already exists (ID: {existing.id})",
+                "error": f"A client with email '{email}' already exists",
                 "existing_client": {
                     "id": existing.id,
-                    "name": existing.name,
-                    "vat_number": existing.vat_number,
+                    "name": existing.clientName,
+                    "email": existing.email,
                 },
             }
 
-        # Check if VAT number already exists (if provided)
-        if vat_number:
-            existing_vat = self.db.query(Client).filter(Client.vat_number == vat_number).first()
-            if existing_vat:
-                return {
-                    "error": f"A client with VAT number '{vat_number}' already exists",
-                    "existing_client": {
-                        "id": existing_vat.id,
-                        "name": existing_vat.name,
-                        "vat_number": existing_vat.vat_number,
-                    },
-                }
-
-        # Parse entity type
-        parsed_entity_type = EntityType.LIMITED_COMPANY  # default
-        if entity_type:
+        # Parse dates or use defaults (current quarter)
+        now = datetime.now()
+        if vat_period_start:
             try:
-                parsed_entity_type = EntityType(entity_type.lower())
+                period_start = datetime.fromisoformat(vat_period_start)
             except ValueError:
-                return {
-                    "error": f"Invalid entity type: '{entity_type}'. Valid options are: {', '.join(e.value for e in EntityType)}"
-                }
+                return {"error": f"Invalid date format for vat_period_start: {vat_period_start}. Use YYYY-MM-DD."}
+        else:
+            # Default to start of current quarter
+            quarter_month = ((now.month - 1) // 3) * 3 + 1
+            period_start = datetime(now.year, quarter_month, 1)
+
+        if vat_period_end:
+            try:
+                period_end = datetime.fromisoformat(vat_period_end)
+            except ValueError:
+                return {"error": f"Invalid date format for vat_period_end: {vat_period_end}. Use YYYY-MM-DD."}
+        else:
+            # Default to end of current quarter
+            quarter_end_month = ((now.month - 1) // 3) * 3 + 3
+            if quarter_end_month == 3:
+                period_end = datetime(now.year, 3, 31)
+            elif quarter_end_month == 6:
+                period_end = datetime(now.year, 6, 30)
+            elif quarter_end_month == 9:
+                period_end = datetime(now.year, 9, 30)
+            else:
+                period_end = datetime(now.year, 12, 31)
+
+        # Generate VAT period label
+        quarter_num = (period_start.month - 1) // 3 + 1
+        vat_period_label = f"Q{quarter_num} {period_start.year}"
 
         # Create the client
-        client = Client(
-            name=name,
-            vat_number=vat_number,
-            entity_type=parsed_entity_type,
-            contact_email=contact_email,
-            contact_name=contact_name,
-            address=address,
+        client_id = generate_cuid()
+        client = ClientSetup(
+            id=client_id,
+            email=email,
+            clientName=client_name,
+            entityType=entity_type,
+            vatScheme=vat_scheme,
+            vatPeriodStart=period_start,
+            vatPeriodEnd=period_end,
+            vatPeriodLabel=vat_period_label,
+            bankAccounts=[],
+            salesChannels=[],
             notes=notes,
         )
         self.db.add(client)
+
+        # Create default checklist items
+        default_checklist = [
+            {"itemId": "bank_statements", "title": "Bank Statements", "required": True},
+            {"itemId": "sales_invoices", "title": "Sales Invoices", "required": True},
+            {"itemId": "purchase_invoices", "title": "Purchase Invoices", "required": True},
+            {"itemId": "expense_receipts", "title": "Expense Receipts", "required": True},
+            {"itemId": "payroll_records", "title": "Payroll Records", "required": False},
+        ]
+
+        for item in default_checklist:
+            checklist_item = ChecklistItem(
+                id=generate_cuid(),
+                clientSetupId=client_id,
+                itemId=item["itemId"],
+                title=item["title"],
+                required=item["required"],
+                status="missing",
+                acceptance="required" if item["required"] else "optional",
+                ctaAction="request_upload",
+            )
+            self.db.add(checklist_item)
+
         self.db.commit()
         self.db.refresh(client)
 
         return {
             "success": True,
-            "message": f"Client '{name}' created successfully",
+            "message": f"Client '{client_name}' created successfully",
             "client": {
                 "id": client.id,
-                "name": client.name,
-                "vat_number": client.vat_number,
-                "entity_type": client.entity_type.value,
-                "contact_email": client.contact_email,
-                "contact_name": client.contact_name,
-                "address": client.address,
-                "notes": client.notes,
+                "name": client.clientName,
+                "email": client.email,
+                "entity_type": client.entityType,
+                "vat_scheme": client.vatScheme,
+                "vat_period": vat_period_label,
+            },
+            "onboarding_link": f"/onboard/{client.id}",
+        }
+
+    def _tool_update_checklist_item(self, item_id: str, status: str) -> dict[str, Any]:
+        """Update a checklist item status."""
+        item = self.db.get(ChecklistItem, item_id)
+        if not item:
+            return {"error": f"Checklist item {item_id} not found"}
+
+        valid_statuses = ["missing", "uploaded", "unknown"]
+        if status not in valid_statuses:
+            return {"error": f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"}
+
+        item.status = status
+        item.updatedAt = datetime.now()
+        self.db.commit()
+
+        return {
+            "success": True,
+            "message": f"Checklist item '{item.title}' updated to '{status}'",
+            "item": {
+                "id": item.id,
+                "title": item.title,
+                "status": item.status,
             },
         }
