@@ -4,9 +4,10 @@ import { db } from "~/server/db";
 type ReviewAction = "approve" | "reject" | "request_info";
 
 interface ReviewRequestBody {
-    resultId: string;
+    resultId?: string;
     action: ReviewAction;
     notes?: string;
+    applyToAll?: boolean;
 }
 
 // POST - Submit a review action for a flagged validation result
@@ -28,13 +29,6 @@ export async function POST(
         const body: ReviewRequestBody = await request.json();
         const { resultId, action, notes } = body;
 
-        if (!resultId || !action) {
-            return NextResponse.json(
-                { success: false, error: "Missing required fields: resultId and action" },
-                { status: 400 }
-            );
-        }
-
         const validActions: ReviewAction[] = ["approve", "reject", "request_info"];
         if (!validActions.includes(action)) {
             return NextResponse.json(
@@ -43,18 +37,129 @@ export async function POST(
             );
         }
 
-        const validationResultId = parseInt(resultId);
-        if (isNaN(validationResultId)) {
+        const applyToAll = Boolean(body.applyToAll);
+        if (!resultId && !applyToAll) {
+            return NextResponse.json(
+                { success: false, error: "Missing required fields: resultId or applyToAll" },
+                { status: 400 }
+            );
+        }
+
+        let validationResultId: number | undefined;
+        if (!applyToAll) {
+            validationResultId = parseInt(resultId || "");
+        }
+        if (!applyToAll && (validationResultId === undefined || isNaN(validationResultId))) {
             return NextResponse.json(
                 { success: false, error: "Invalid result ID" },
                 { status: 400 }
             );
         }
 
+        // Bulk update for entire document
+        if (applyToAll) {
+            const document = await db.document.findUnique({
+                where: { id: docId },
+                include: {
+                    validationResults: {
+                        where: {
+                            OR: [
+                                { status: "FAILED" },
+                                { status: "WARNING" },
+                            ],
+                        },
+                    },
+                    evidenceItem: {
+                        include: {
+                            vatPeriod: {
+                                include: {
+                                    client: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+            if (!document) {
+                return NextResponse.json(
+                    { success: false, error: "Document not found" },
+                    { status: 404 }
+                );
+            }
+
+            // TODO: Get actual user from session/auth when available
+            const reviewedBy = "Accountant";
+            const now = new Date();
+
+            const updateResult = await db.validationResult.updateMany({
+                where: {
+                    documentId: docId,
+                    OR: [
+                        { status: "FAILED" },
+                        { status: "WARNING" },
+                    ],
+                },
+                data: {
+                    reviewedAt: now,
+                    reviewedBy,
+                    reviewAction: action,
+                },
+            });
+
+            if (action === "approve") {
+                await db.document.update({
+                    where: { id: docId },
+                    data: { status: "VALIDATED" },
+                });
+            } else if (action === "reject") {
+                await db.document.update({
+                    where: { id: docId },
+                    data: { status: "FAILED" },
+                });
+
+                const vatPeriod = document.evidenceItem?.vatPeriod;
+                if (vatPeriod) {
+                    await db.auditTrailEntry.create({
+                        data: {
+                            vatPeriodId: vatPeriod.id,
+                            action: "DOCUMENT_REJECTED",
+                            description: `Document "${document.filename}" was rejected during review`,
+                            performedBy: reviewedBy,
+                            performedAt: now,
+                            entityType: "Document",
+                            entityId: docId,
+                        },
+                    });
+                }
+            } else if (action === "request_info") {
+                const vatPeriod = document.evidenceItem?.vatPeriod;
+                if (vatPeriod) {
+                    await db.auditTrailEntry.create({
+                        data: {
+                            vatPeriodId: vatPeriod.id,
+                            action: "INFO_REQUESTED",
+                            description: `Additional information requested for document "${document.filename}"`,
+                            performedBy: reviewedBy,
+                            performedAt: now,
+                            entityType: "Document",
+                            entityId: docId,
+                        },
+                    });
+                }
+            }
+
+            return NextResponse.json({
+                success: true,
+                message: `Document ${action === "approve" ? "approved" : action === "reject" ? "rejected" : "flagged for info"} successfully`,
+                updatedCount: updateResult.count,
+            });
+        }
+
         // Verify the validation result exists and belongs to this document
         const validationResult = await db.validationResult.findFirst({
             where: {
-                id: validationResultId,
+                id: validationResultId!,
                 documentId: docId,
             },
             include: {

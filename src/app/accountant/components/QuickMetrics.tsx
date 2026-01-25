@@ -26,46 +26,25 @@ function MetricCard({
     return (
         <button
             onClick={onClick}
-            className="sticky-note w-full text-left group"
+            className="metric-card metric-card--minimal w-full text-left"
             style={{
-                '--accent-color': accentColor
+                "--accent-color": accentColor,
             } as React.CSSProperties}
         >
-            {/* Top accent bar */}
-            <div
-                className="absolute top-0 left-0 right-0 h-1 rounded-t"
-                style={{ backgroundColor: accentColor }}
-            />
-
-            <div className="p-5 pt-6">
-                {/* Icon and value row */}
-                <div className="flex items-start justify-between mb-3">
-                    <div
-                        className="p-2 rounded"
-                        style={{ backgroundColor: `${accentColor}15` }}
-                    >
-                        <span style={{ color: accentColor }}>{icon}</span>
+            <div className="metric-card__content">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span
+                            className="metric-icon"
+                            style={{ backgroundColor: `${accentColor}12`, color: accentColor }}
+                        >
+                            {icon}
+                        </span>
+                        <p className="metric-title truncate">{title}</p>
                     </div>
+                    <span className="metric-value">{value}</span>
                 </div>
-
-                {/* Value */}
-                <div className="mb-1">
-                    <span className="text-[32px] font-semibold text-[#172B4D] leading-none tabular-nums">
-                        {value}
-                    </span>
-                </div>
-
-                {/* Label */}
-                <p className="text-[12px] font-medium text-[#5E6C84] uppercase tracking-wide">
-                    {title}
-                </p>
-
-                {/* Subtitle */}
-                {subtitle && (
-                    <p className="text-[11px] text-[#97A0AF] mt-1">
-                        {subtitle}
-                    </p>
-                )}
+                {subtitle && <p className="metric-subtitle">{subtitle}</p>}
             </div>
         </button>
     );
@@ -164,7 +143,7 @@ export function QuickMetrics({ metrics, onMetricClick }: QuickMetricsProps) {
     ];
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             {metricCards.map((metric, index) => (
                 <div
                     key={metric.id}

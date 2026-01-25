@@ -10,6 +10,7 @@ import {
     ChevronRightIcon,
     SparkleIcon,
     SearchIcon,
+    CheckCircleIcon,
 } from "./icons/AccountantIcons";
 
 interface NavItem {
@@ -25,6 +26,7 @@ interface SidebarProps {
     clientCount?: number;
     vatDueCount?: number;
     flaggedCount?: number;
+    readyCount?: number;
 }
 
 // Flag icon for flagged documents
@@ -40,11 +42,19 @@ function FlagIcon({ size }: { size: string }) {
 const mainNavItems: NavItem[] = [
     { id: "dashboard", label: "Dashboard", icon: <DashboardIcon size="md" /> },
     { id: "clients", label: "Clients", icon: <ClientsIcon size="md" /> },
+    { id: "ready", label: "Ready to Submit", icon: <CheckCircleIcon size="md" /> },
     { id: "flagged", label: "Flagged", icon: <FlagIcon size="md" /> },
     { id: "vat-returns", label: "VAT Returns", icon: <VatIcon size="md" /> },
 ];
 
-export function Sidebar({ onNavigate, activeItem = "dashboard", clientCount, vatDueCount, flaggedCount }: SidebarProps) {
+export function Sidebar({
+    onNavigate,
+    activeItem = "dashboard",
+    clientCount,
+    vatDueCount,
+    flaggedCount,
+    readyCount,
+}: SidebarProps) {
     const [isCollapsed, setIsCollapsed] = useState(false);
 
     const handleNavClick = (itemId: string) => {
@@ -56,6 +66,8 @@ export function Sidebar({ onNavigate, activeItem = "dashboard", clientCount, vat
         switch (itemId) {
             case "clients":
                 return clientCount;
+            case "ready":
+                return readyCount;
             case "vat-returns":
                 return vatDueCount;
             case "flagged":
@@ -81,8 +93,8 @@ export function Sidebar({ onNavigate, activeItem = "dashboard", clientCount, vat
         >
             {/* Header / Logo */}
             <div className="flex items-center gap-3 px-4 py-4 border-b border-white/5">
-                <div className="flex-shrink-0 w-8 h-8 rounded bg-[#0052CC] flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">N</span>
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-black flex items-center justify-center">
+                    <img src="/logo.svg" alt="Nova logo" className="w-6 h-6" />
                 </div>
                 {!isCollapsed && (
                     <div className="animate-fade-in">

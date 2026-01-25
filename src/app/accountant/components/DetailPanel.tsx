@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import type { ClientRow } from "./ClientTable";
 import {
     CloseIcon,
@@ -131,6 +131,10 @@ export function DetailPanel({
     onViewOnboarding,
     onValidationComplete,
 }: DetailPanelProps) {
+    const [isMarkingReady, setIsMarkingReady] = useState(false);
+    const [markReadyError, setMarkReadyError] = useState<string | null>(null);
+    const [markReadyMessage, setMarkReadyMessage] = useState<string | null>(null);
+
     const formatDate = (date: Date) => {
         return new Date(date).toLocaleDateString("en-GB", {
             day: "numeric",
@@ -140,6 +144,45 @@ export function DetailPanel({
     };
 
     if (!isOpen) return null;
+
+    const isReady = client?.vatPeriodStatus === "ready";
+    const docsComplete = client
+        ? client.documentsRequired === 0 || client.documentsUploaded >= client.documentsRequired
+        : false;
+    const canMarkReady = Boolean(
+        client &&
+        client.vatPeriodId &&
+        docsComplete &&
+        !client.hasPendingReviews &&
+        !client.hasFailedValidations
+    );
+
+    const handleMarkReady = async () => {
+        if (!client?.vatPeriodId || isMarkingReady) return;
+        setIsMarkingReady(true);
+        setMarkReadyError(null);
+        setMarkReadyMessage(null);
+
+        try {
+            const response = await fetch(`/api/vat-periods/${client.vatPeriodId}/status`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "READY" }),
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to mark as ready");
+            }
+
+            setMarkReadyMessage("Marked as ready to submit");
+            onValidationComplete?.();
+        } catch (error) {
+            setMarkReadyError(error instanceof Error ? error.message : "Failed to mark as ready");
+        } finally {
+            setIsMarkingReady(false);
+        }
+    };
 
     return (
         <>
@@ -188,7 +231,11 @@ export function DetailPanel({
                                 <ClientFlowDiagram
                                     currentStage={getClientStage(client)}
                                     variant="vertical"
-                                    failedStages={client.hasFailedValidations ? ["verification"] : []}
+                                    failedStages={
+                                        client.hasFailedValidations || client.hasPendingReviews
+                                            ? ["verification"]
+                                            : []
+                                    }
                                 />
                             </div>
 
@@ -332,6 +379,51 @@ export function DetailPanel({
                                     clientId={client.id}
                                     onValidationComplete={onValidationComplete}
                                 />
+                            </div>
+
+                            {/* Final Review */}
+                            <div className="mb-5 p-4 bg-white rounded border border-[#DFE1E6]">
+                                <h3 className="text-[11px] font-semibold text-[#5E6C84] uppercase tracking-wider mb-3">
+                                    Final Review
+                                </h3>
+                                <div className="grid grid-cols-2 gap-3 text-[12px] text-[#172B4D]">
+                                    <div className="rounded bg-[#F4F5F7] px-3 py-2">
+                                        Docs: {client.documentsUploaded}/{client.documentsRequired}
+                                    </div>
+                                    <div className="rounded bg-[#F4F5F7] px-3 py-2">
+                                        Bank: {client.hasBankConnection ? "Connected" : "Not linked"}
+                                    </div>
+                                    <div className="rounded bg-[#F4F5F7] px-3 py-2">
+                                        Review: {client.hasPendingReviews ? "Pending" : "Clear"}
+                                    </div>
+                                    <div className="rounded bg-[#F4F5F7] px-3 py-2">
+                                        Validation: {client.hasFailedValidations ? "Issues" : "Clear"}
+                                    </div>
+                                </div>
+
+                                {markReadyMessage && (
+                                    <div className="mt-3 rounded border border-[#ABF5D1] bg-[#E3FCEF] px-3 py-2 text-[11px] text-[#006644]">
+                                        {markReadyMessage}
+                                    </div>
+                                )}
+                                {markReadyError && (
+                                    <div className="mt-3 rounded border border-[#FFBDAD] bg-[#FFEBE6] px-3 py-2 text-[11px] text-[#BF2600]">
+                                        {markReadyError}
+                                    </div>
+                                )}
+
+                                <div className="mt-3 flex items-center gap-2">
+                                    <button
+                                        onClick={handleMarkReady}
+                                        disabled={!canMarkReady || isMarkingReady || isReady}
+                                        className="flex-1 rounded bg-[#36B37E] px-3 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-[#2E9D6B] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {isReady ? "Ready to submit" : isMarkingReady ? "Marking..." : "Mark ready to submit"}
+                                    </button>
+                                </div>
+                                <p className="mt-2 text-[10px] text-[#97A0AF]">
+                                    Requires all documents and approvals complete.
+                                </p>
                             </div>
 
                             {/* Last Updated */}

@@ -32,6 +32,7 @@ export interface ValidationResult {
     fieldName?: string;
     expectedValue?: string;
     actualValue?: string;
+    reviewAction?: "approve" | "reject" | "request_info";
 }
 
 export interface DocumentVerificationData {
@@ -168,9 +169,15 @@ function DocumentItem({
 
     const isNotProvided = doc.status === "not_provided";
     const canReprocess = doc.status === "failed" || doc.status === "processing";
-    const passed = doc.validationResults.filter((r) => r.status === "passed").length;
-    const failed = doc.validationResults.filter((r) => r.status === "failed").length;
-    const warnings = doc.validationResults.filter((r) => r.status === "warning").length;
+    const passed = doc.validationResults.filter(
+        (r) => r.status === "passed" || r.reviewAction === "approve"
+    ).length;
+    const failed = doc.validationResults.filter(
+        (r) => r.status === "failed" && r.reviewAction !== "approve"
+    ).length;
+    const warnings = doc.validationResults.filter(
+        (r) => r.status === "warning" && r.reviewAction !== "approve"
+    ).length;
 
     // For not_provided documents, show a non-expandable item
     if (isNotProvided) {
@@ -391,6 +398,7 @@ async function fetchVerificationData(clientId: string): Promise<{
                 fieldName: r.fieldName,
                 expectedValue: r.expectedValue,
                 actualValue: r.actualValue,
+                reviewAction: r.reviewAction ?? undefined,
             })),
         }));
 
@@ -831,9 +839,15 @@ export function DocumentVerification({
         failedDocuments: documents.filter((d) => d.status === "failed").length,
         pendingDocuments: documents.filter((d) => d.status === "pending" || d.status === "processing" || d.status === "extracted").length,
         notProvidedDocuments: documents.filter((d) => d.status === "not_provided").length,
-        passedValidations: documents.flatMap((d) => d.validationResults).filter((r) => r.status === "passed").length,
-        failedValidations: documents.flatMap((d) => d.validationResults).filter((r) => r.status === "failed").length,
-        warningValidations: documents.flatMap((d) => d.validationResults).filter((r) => r.status === "warning").length,
+        passedValidations: documents
+            .flatMap((d) => d.validationResults)
+            .filter((r) => r.status === "passed" || r.reviewAction === "approve").length,
+        failedValidations: documents
+            .flatMap((d) => d.validationResults)
+            .filter((r) => r.status === "failed" && r.reviewAction !== "approve").length,
+        warningValidations: documents
+            .flatMap((d) => d.validationResults)
+            .filter((r) => r.status === "warning" && r.reviewAction !== "approve").length,
     };
 
     // Calculate validation rate (excluding not_provided documents from the denominator)

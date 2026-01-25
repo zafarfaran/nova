@@ -57,19 +57,27 @@ export default async function AccountantDashboard() {
         }
 
         // Calculate validation status from documents
-        let failedValidationCount = 0;
-        let pendingReviewCount = 0;
+        const flaggedDocIds = new Set<number>();
+        const pendingReviewDocIds = new Set<number>();
+        const rejectedDocIds = new Set<number>();
+        const failedStatusDocIds = new Set<number>();
 
         if (latestPeriod) {
             for (const evidenceItem of latestPeriod.evidenceItems) {
                 for (const doc of evidenceItem.documents) {
+                    if (doc.status === "FAILED") {
+                        failedStatusDocIds.add(doc.id);
+                    }
                     for (const result of doc.validationResults) {
-                        // Count failed/warning validations
                         if (result.status === "FAILED" || result.status === "WARNING") {
-                            failedValidationCount++;
-                            // Count those pending review (no review action taken yet)
-                            if (!result.reviewAction) {
-                                pendingReviewCount++;
+                            if (result.reviewAction !== "approve") {
+                                flaggedDocIds.add(doc.id);
+                            }
+                            if (!result.reviewAction || result.reviewAction === "request_info") {
+                                pendingReviewDocIds.add(doc.id);
+                            }
+                            if (result.reviewAction === "reject") {
+                                rejectedDocIds.add(doc.id);
                             }
                         }
                     }
@@ -77,7 +85,12 @@ export default async function AccountantDashboard() {
             }
         }
 
-        const hasFailedValidations = failedValidationCount > 0;
+        const failedValidationCount = new Set([
+            ...flaggedDocIds,
+            ...failedStatusDocIds,
+        ]).size;
+        const pendingReviewCount = pendingReviewDocIds.size;
+        const hasFailedValidations = rejectedDocIds.size > 0 || failedStatusDocIds.size > 0;
         const hasPendingReviews = pendingReviewCount > 0;
 
         // Determine status based on document completion
@@ -98,6 +111,7 @@ export default async function AccountantDashboard() {
         const vatPeriodLabel = latestPeriod
             ? `Q${Math.ceil((latestPeriod.periodStart.getMonth() + 1) / 3)} ${latestPeriod.periodStart.getFullYear()}`
             : "No period";
+        const vatPeriodStatus = latestPeriod?.status ? latestPeriod.status.toLowerCase() : undefined;
 
         return {
             id: client.id.toString(),
@@ -106,6 +120,8 @@ export default async function AccountantDashboard() {
             entityType: client.entityType.toLowerCase(),
             vatScheme: client.vatScheme || "standard",
             vatPeriodLabel,
+            vatPeriodId: latestPeriod?.id,
+            vatPeriodStatus,
             vatPeriodEnd: latestPeriod?.periodEnd || new Date(),
             documentsUploaded,
             documentsRequired,

@@ -33,9 +33,13 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
         router.refresh();
     }, [router]);
 
-    // Calculate flagged count (clients with pending reviews)
-    const flaggedClientsCount = useMemo(() => {
-        return clients.filter((c) => c.hasPendingReviews).length;
+    // Calculate flagged document count
+    const flaggedDocumentsCount = useMemo(() => {
+        return clients.reduce((sum, client) => sum + (client.failedValidationCount || 0), 0);
+    }, [clients]);
+
+    const readyClientsCount = useMemo(() => {
+        return clients.filter((c) => c.vatPeriodStatus === "ready").length;
     }, [clients]);
 
     // Filter clients based on search
@@ -50,11 +54,17 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
         );
     }, [clients, searchQuery]);
 
+    const filteredReadyClients = useMemo(() => {
+        return filteredClients.filter((client) => client.vatPeriodStatus === "ready");
+    }, [filteredClients]);
+
     // Get page title based on active nav
     const getPageTitle = () => {
         switch (activeNav) {
             case "flagged":
                 return "Flagged Documents";
+            case "ready":
+                return "Ready to Submit";
             case "clients":
                 return "All Clients";
             case "vat-returns":
@@ -68,6 +78,8 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
         switch (activeNav) {
             case "flagged":
                 return "Review AI-flagged documents requiring attention";
+            case "ready":
+                return "Clients ready for VAT submission";
             case "clients":
                 return "Manage your client portfolio";
             case "vat-returns":
@@ -136,7 +148,8 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                 activeItem={activeNav}
                 clientCount={metrics.totalClients}
                 vatDueCount={metrics.vatReturnsDue}
-                flaggedCount={flaggedClientsCount}
+                flaggedCount={flaggedDocumentsCount}
+                    readyCount={readyClientsCount}
                 onNavigate={(itemId) => {
                     setActiveNav(itemId);
                     if (itemId === "ai-assistant") {
@@ -188,6 +201,18 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                     {activeNav === "flagged" && (
                         <div className="animate-fade-in-up">
                             <FlaggedDocuments onRefresh={refreshDashboard} />
+                        </div>
+                    )}
+
+                    {/* Ready to Submit View */}
+                    {activeNav === "ready" && (
+                        <div className="animate-fade-in-up">
+                            <ClientTable
+                                data={filteredReadyClients}
+                                onRowClick={handleRowClick}
+                                selectedId={selectedClient?.id}
+                                onDeleteClient={handleDeleteClient}
+                            />
                         </div>
                     )}
 

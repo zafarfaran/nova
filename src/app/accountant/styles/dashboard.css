@@ -507,32 +507,54 @@
 
 .metric-card {
   background: var(--bg-primary);
-  border-radius: 4px;
-  padding: 16px 20px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 8px;
   border: 1px solid var(--border-light);
-  transition: all 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
-.metric-card:hover {
-  box-shadow: var(--shadow-md);
+.metric-card--minimal {
+  border-top: 2px solid var(--accent-color);
+  box-shadow: none;
+}
+
+.metric-card--minimal:hover {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.metric-card__content {
+  padding: 14px 16px;
+}
+
+.metric-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.metric-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
 .metric-value {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--text-primary);
-  line-height: 1.1;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
-.metric-label {
+.metric-subtitle {
+  margin-top: 6px;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-top: 4px;
+  color: var(--text-muted);
 }
 
 /* ============================================

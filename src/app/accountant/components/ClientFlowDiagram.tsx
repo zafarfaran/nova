@@ -288,20 +288,22 @@ export function getClientStage(client: {
     documentsRequired: number;
     hasBankConnection: boolean;
     status: string;
+    vatPeriodStatus?: string;
     hasFailedValidations?: boolean;
     hasPendingReviews?: boolean;
 }): FlowStage {
     const docProgress = client.documentsRequired > 0
         ? client.documentsUploaded / client.documentsRequired
         : 0;
+    const status = client.vatPeriodStatus ?? client.status;
 
     // Submitted
-    if (client.status === "submitted" || client.status === "locked") {
+    if (status === "submitted" || status === "locked") {
         return "submitted";
     }
 
     // Ready
-    if (client.status === "ready" || (docProgress === 1 && client.hasBankConnection)) {
+    if (status === "ready" || (docProgress === 1 && client.hasBankConnection)) {
         // Block progression if there are failed validations or pending reviews
         if (client.hasFailedValidations || client.hasPendingReviews) {
             return "verification";
@@ -310,7 +312,7 @@ export function getClientStage(client: {
     }
 
     // Review
-    if (client.status === "review" || client.status === "under_review") {
+    if (status === "review" || status === "under_review") {
         // Block at verification if there are unresolved validation issues
         if (client.hasFailedValidations || client.hasPendingReviews) {
             return "verification";
@@ -318,10 +320,12 @@ export function getClientStage(client: {
         return "review";
     }
 
-    // Verification (docs complete, checking)
-    // Client stays here until all validations pass or are approved
+    // Verification/Review (docs complete, checking)
     if (docProgress === 1) {
-        return "verification";
+        if (client.hasFailedValidations || client.hasPendingReviews) {
+            return "verification";
+        }
+        return "review";
     }
 
     // Bank connection (some docs uploaded)
@@ -349,19 +353,22 @@ export function hasBlockingValidationIssues(client: {
 // Compact inline version for table rows
 export function ClientFlowIndicator({
     currentStage,
-    hasFailedValidations = false
+    hasFailedValidations = false,
+    hasPendingReviews = false,
 }: {
     currentStage: FlowStage;
     hasFailedValidations?: boolean;
+    hasPendingReviews?: boolean;
 }) {
     const currentIndex = stages.findIndex((s) => s.id === currentStage);
     const progress = ((currentIndex + 1) / stages.length) * 100;
 
     const stageConfig = stages.find(s => s.id === currentStage);
+    const hasBlockingIssues = hasFailedValidations || hasPendingReviews;
 
     const getColor = () => {
-        // Show red if has failed validations at verification stage
-        if (hasFailedValidations && currentStage === "verification") return "#DE350B";
+        // Show red if there are failed validations or pending reviews at verification stage
+        if (hasBlockingIssues && currentStage === "verification") return "#DE350B";
         if (currentStage === "submitted") return "#36B37E";
         if (currentStage === "ready") return "#36B37E";
         if (currentStage === "review" || currentStage === "verification") return "#0052CC";

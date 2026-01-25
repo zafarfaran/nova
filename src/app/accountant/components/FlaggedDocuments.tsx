@@ -100,6 +100,17 @@ export interface FlaggedDocumentsSummary {
     pendingReview: number;
 }
 
+function calculateSummary(documents: FlaggedDocument[]): FlaggedDocumentsSummary {
+    const allResults = documents.flatMap((d) => d.validationResults);
+    return {
+        total: documents.length,
+        highSeverity: allResults.filter((r) => r.severity === "high").length,
+        mediumSeverity: allResults.filter((r) => r.severity === "medium").length,
+        lowSeverity: allResults.filter((r) => r.severity === "low").length,
+        pendingReview: allResults.filter((r) => !r.reviewAction).length,
+    };
+}
+
 // Severity colors (Jira-like)
 const severityConfig: Record<Severity, { bg: string; color: string; border: string; label: string }> = {
     high: { bg: "#FFEBE6", color: "#BF2600", border: "#DE350B", label: "HIGH" },
@@ -535,11 +546,15 @@ function ValidationResultCard({
 function FlaggedDocumentCard({
     document,
     onReviewAction,
+    onDocumentAction,
     processingResultId,
+    processingDocumentId,
 }: {
     document: FlaggedDocument;
     onReviewAction: (docId: string, resultId: string, action: ReviewAction) => void;
+    onDocumentAction: (docId: string, action: ReviewAction) => void;
     processingResultId: string | null;
+    processingDocumentId: string | null;
 }) {
     const [expanded, setExpanded] = useState(true);
 
@@ -547,6 +562,7 @@ function FlaggedDocumentCard({
         (r) => r.severity === "high" || (!r.severity && r.status === "failed")
     ).length;
     const pendingCount = document.validationResults.filter((r) => !r.reviewAction).length;
+    const isDocumentProcessing = processingDocumentId === document.id;
 
     const handleViewDocument = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -589,6 +605,27 @@ function FlaggedDocumentCard({
                         </button>
                     )}
 
+                    {pendingCount > 0 && (
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => onDocumentAction(document.id, "approve")}
+                                disabled={isDocumentProcessing}
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-[#006644] bg-[#E3FCEF] hover:bg-[#ABF5D1] rounded transition-colors disabled:opacity-50"
+                            >
+                                {isDocumentProcessing ? <SpinnerIcon /> : <CheckCircleIcon />}
+                                Approve doc
+                            </button>
+                            <button
+                                onClick={() => onDocumentAction(document.id, "reject")}
+                                disabled={isDocumentProcessing}
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-[#BF2600] bg-[#FFEBE6] hover:bg-[#FFBDAD] rounded transition-colors disabled:opacity-50"
+                            >
+                                {isDocumentProcessing ? <SpinnerIcon /> : <XCircleIcon />}
+                                Reject doc
+                            </button>
+                        </div>
+                    )}
+
                     {highCount > 0 && (
                         <span className="flex items-center gap-1 px-1.5 py-0.5 bg-[#FFEBE6] text-[#BF2600] text-[9px] font-bold rounded">
                             {highCount} HIGH
@@ -612,7 +649,7 @@ function FlaggedDocumentCard({
                             onAction={(action) =>
                                 onReviewAction(document.id, result.id, action)
                             }
-                            isProcessing={processingResultId === result.id}
+                            isProcessing={processingResultId === result.id || isDocumentProcessing}
                         />
                     ))}
                 </div>
@@ -674,6 +711,7 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
     const [isLoading, setIsLoading] = useState(!initialDocuments);
     const [error, setError] = useState<string | null>(null);
     const [processingResultId, setProcessingResultId] = useState<string | null>(null);
+    const [processingDocumentId, setProcessingDocumentId] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
     // Fetch flagged documents
@@ -690,13 +728,7 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
             const data = await response.json();
             if (data.success) {
                 setDocuments(data.flaggedDocuments || []);
-                setSummary(data.summary || {
-                    total: 0,
-                    highSeverity: 0,
-                    mediumSeverity: 0,
-                    lowSeverity: 0,
-                    pendingReview: 0,
-                });
+                setSummary(data.summary || calculateSummary(data.flaggedDocuments || []));
             } else {
                 throw new Error(data.error || "Failed to fetch flagged documents");
             }
@@ -712,15 +744,7 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
         if (!initialDocuments) {
             fetchFlaggedDocuments();
         } else {
-            // Calculate summary from initial documents
-            const allResults = initialDocuments.flatMap((d) => d.validationResults);
-            setSummary({
-                total: initialDocuments.length,
-                highSeverity: allResults.filter((r) => r.severity === "high").length,
-                mediumSeverity: allResults.filter((r) => r.severity === "medium").length,
-                lowSeverity: allResults.filter((r) => r.severity === "low").length,
-                pendingReview: allResults.filter((r) => !r.reviewAction).length,
-            });
+            setSummary(calculateSummary(initialDocuments));
         }
     }, [initialDocuments, fetchFlaggedDocuments]);
 
@@ -747,8 +771,8 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
             const data = await response.json();
             if (data.success) {
                 // Update local state
-                setDocuments((prev) =>
-                    prev.map((doc) => {
+                setDocuments((prev) => {
+                    const next = prev.map((doc) => {
                         if (doc.id === docId) {
                             return {
                                 ...doc,
@@ -766,8 +790,10 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
                             };
                         }
                         return doc;
-                    })
-                );
+                    });
+                    setSummary(calculateSummary(next));
+                    return next;
+                });
 
                 const actionLabels: Record<ReviewAction, string> = {
                     approve: "approved",
@@ -776,13 +802,6 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
                 };
                 setStatusMessage(`Issue ${actionLabels[action]} successfully`);
                 setTimeout(() => setStatusMessage(null), 3000);
-
-                // Recalculate summary
-                const allResults = documents.flatMap((d) => d.validationResults);
-                setSummary((prev) => ({
-                    ...prev,
-                    pendingReview: Math.max(0, prev.pendingReview - 1),
-                }));
 
                 // Notify parent to refresh dashboard data
                 onRefresh?.();
@@ -793,6 +812,62 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
             setError(err instanceof Error ? err.message : "An error occurred");
         } finally {
             setProcessingResultId(null);
+        }
+    };
+
+    const handleDocumentReviewAction = async (docId: string, action: ReviewAction) => {
+        setProcessingDocumentId(docId);
+        setError(null);
+
+        try {
+            const response = await fetch(`/api/flagged-documents/${docId}/review`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action, applyToAll: true }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to submit document review action");
+            }
+
+            const data = await response.json();
+            if (data.success) {
+                const reviewedAt = new Date().toISOString();
+                setDocuments((prev) => {
+                    const next = prev.map((doc) => {
+                        if (doc.id === docId) {
+                            return {
+                                ...doc,
+                                validationResults: doc.validationResults.map((r) => ({
+                                    ...r,
+                                    reviewAction: action,
+                                    reviewedAt,
+                                    reviewedBy: "Current User", // TODO: Get from auth
+                                })),
+                            };
+                        }
+                        return doc;
+                    });
+                    setSummary(calculateSummary(next));
+                    return next;
+                });
+
+                const actionLabels: Record<ReviewAction, string> = {
+                    approve: "approved",
+                    reject: "rejected",
+                    request_info: "marked for follow-up",
+                };
+                setStatusMessage(`Document ${actionLabels[action]} successfully`);
+                setTimeout(() => setStatusMessage(null), 3000);
+
+                onRefresh?.();
+            } else {
+                throw new Error(data.error || "Failed to submit document review action");
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "An error occurred");
+        } finally {
+            setProcessingDocumentId(null);
         }
     };
 
@@ -815,6 +890,8 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
         });
         return Array.from(map.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
     }, [documentsWithPending]);
+
+    const pendingSummary = useMemo(() => calculateSummary(documentsWithPending), [documentsWithPending]);
 
     // If no flagged documents, show empty state
     if (!isLoading && documents.length === 0) {
@@ -850,9 +927,9 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
                     <h3 className="text-[12px] font-semibold text-[#172B4D]">
                         Flagged for Review
                     </h3>
-                    {summary.pendingReview > 0 && (
+                    {pendingSummary.pendingReview > 0 && (
                         <span className="px-1.5 py-0.5 bg-[#FFEBE6] text-[#BF2600] text-[10px] font-bold rounded">
-                            {summary.pendingReview}
+                            {pendingSummary.pendingReview}
                         </span>
                     )}
                 </div>
@@ -895,7 +972,7 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
                 )}
 
                 {/* Summary */}
-                {!isLoading && summary.total > 0 && <SummaryHeader summary={summary} />}
+                {!isLoading && pendingSummary.total > 0 && <SummaryHeader summary={pendingSummary} />}
 
                 {/* Document list grouped by client */}
                 {!isLoading && groupedByClient.length > 0 && (
@@ -928,7 +1005,9 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
                                                 key={doc.id}
                                                 document={doc}
                                                 onReviewAction={handleReviewAction}
+                                                onDocumentAction={handleDocumentReviewAction}
                                                 processingResultId={processingResultId}
+                                                processingDocumentId={processingDocumentId}
                                             />
                                         ))}
                                     </div>

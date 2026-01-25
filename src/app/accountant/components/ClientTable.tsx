@@ -12,6 +12,8 @@ export interface ClientRow {
     entityType: string;
     vatScheme: string;
     vatPeriodLabel: string;
+    vatPeriodId?: number;
+    vatPeriodStatus?: string;
     vatPeriodEnd: Date;
     documentsUploaded: number;
     documentsRequired: number;
@@ -256,6 +258,7 @@ export function ClientTable({ data, onRowClick, selectedId, onDeleteClient }: Cl
                                                 <ClientFlowIndicator
                                                     currentStage={getClientStage(client)}
                                                     hasFailedValidations={client.hasFailedValidations}
+                                                    hasPendingReviews={client.hasPendingReviews}
                                                 />
                                             </div>
 

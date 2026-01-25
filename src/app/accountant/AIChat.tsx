@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ClientFlowDiagram, getClientStage } from "./components/ClientFlowDiagram";
+import type { FlowStage } from "./components/ClientFlowDiagram";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -556,6 +557,10 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                                 hasFailedValidations: client.has_failed_validations || false,
                                 hasPendingReviews: client.has_pending_reviews || false,
                             });
+                            const failedStages: FlowStage[] =
+                                client.has_pending_reviews || client.has_failed_validations
+                                    ? ["verification"]
+                                    : [];
                             const attentionBits: string[] = [];
                             if ((client.validation_issue_count || 0) > 0) {
                                 attentionBits.push(`Validation docs: ${client.validation_issue_count}`);
@@ -584,7 +589,11 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                                         </div>
                                     )}
                                     <div className="mt-3 rounded-lg bg-[#F4F5F7] p-2">
-                                        <ClientFlowDiagram currentStage={stage} variant="horizontal" />
+                                        <ClientFlowDiagram
+                                            currentStage={stage}
+                                            variant="horizontal"
+                                            failedStages={failedStages}
+                                        />
                                     </div>
                                 </div>
                             );

@@ -135,7 +135,10 @@ export async function GET(
         // Combine uploaded and missing documents
         const documents = [...uploadedDocuments, ...missingDocuments];
 
-        // Calculate summary
+        // Calculate summary (treat approved issues as resolved)
+        const allResults = documents.flatMap(
+            (d) => d.validationResults as Array<{ status: string; reviewAction?: string | null }>
+        );
         const summary = {
             totalDocuments: documents.length,
             validatedDocuments: documents.filter(
@@ -150,15 +153,15 @@ export async function GET(
             notProvidedDocuments: documents.filter(
                 (d) => d.status === "not_provided"
             ).length,
-            passedValidations: documents
-                .flatMap((d) => d.validationResults)
-                .filter((r) => r.status === "passed").length,
-            failedValidations: documents
-                .flatMap((d) => d.validationResults)
-                .filter((r) => r.status === "failed").length,
-            warningValidations: documents
-                .flatMap((d) => d.validationResults)
-                .filter((r) => r.status === "warning").length,
+            passedValidations: allResults.filter(
+                (r) => r.status === "passed" || r.reviewAction === "approve"
+            ).length,
+            failedValidations: allResults.filter(
+                (r) => r.status === "failed" && r.reviewAction !== "approve"
+            ).length,
+            warningValidations: allResults.filter(
+                (r) => r.status === "warning" && r.reviewAction !== "approve"
+            ).length,
         };
 
         return NextResponse.json({
