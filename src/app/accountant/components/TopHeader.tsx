@@ -20,13 +20,13 @@ export function TopHeader({
     onAddNew,
 }: TopHeaderProps) {
     return (
-        <header className="bg-white border-b border-slate-200">
+        <header className="bg-white border-b border-[#DFE1E6]">
             <div className="px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900">{title}</h1>
+                        <h1 className="text-lg font-semibold text-[#172B4D]">{title}</h1>
                         {subtitle && (
-                            <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
+                            <p className="text-[13px] text-[#5E6C84] mt-0.5">{subtitle}</p>
                         )}
                     </div>
                 </div>
@@ -36,20 +36,20 @@ export function TopHeader({
                     <div className="relative">
                         <SearchIcon
                             size="sm"
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#97A0AF]"
                         />
                         <input
                             type="text"
                             placeholder="Search clients..."
                             onChange={(e) => onSearch?.(e.target.value)}
-                            className="w-64 pl-9 pr-4 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all"
+                            className="w-56 pl-9 pr-4 py-2 rounded border-2 border-[#DFE1E6] bg-white text-[13px] text-[#172B4D] placeholder:text-[#97A0AF] focus:outline-none focus:border-[#0052CC] transition-colors"
                         />
                     </div>
 
                     {/* Add New Client Button */}
                     <button
                         onClick={onAddNew}
-                        className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition-all duration-150 shadow-sm hover:shadow-md"
+                        className="flex items-center gap-2 px-4 py-2 bg-[#0052CC] text-white text-[13px] font-medium rounded hover:bg-[#0747A6] transition-colors"
                     >
                         <PlusIcon size="sm" />
                         <span>New Client</span>

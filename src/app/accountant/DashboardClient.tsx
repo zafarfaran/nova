@@ -9,7 +9,7 @@ import { DetailPanel } from "./components/DetailPanel";
 import { QuickMetrics } from "./components/QuickMetrics";
 import type { DashboardMetrics } from "./components/QuickMetrics";
 import { AIChat } from "./AIChat";
-import { SparkleIcon, CloseIcon } from "./components/icons/AccountantIcons";
+import { SparkleIcon, ChevronRightIcon } from "./components/icons/AccountantIcons";
 import "./styles/dashboard.css";
 
 interface AccountantDashboardClientProps {
@@ -43,26 +43,23 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
 
     const handleCloseDetail = () => {
         setShowDetailPanel(false);
-        setTimeout(() => setSelectedClient(null), 300);
+        setTimeout(() => setSelectedClient(null), 200);
     };
 
     const handleSendReminder = (clientId: string) => {
         console.log("Send reminder to client:", clientId);
-        // TODO: Implement reminder functionality
     };
 
     const handleViewOnboarding = (clientId: string) => {
-        // Open onboarding link in new tab
         window.open(`/onboard/${clientId}`, "_blank");
     };
 
     const handleAddNewClient = () => {
-        // TODO: Navigate to new client form or open modal
         console.log("Add new client");
     };
 
     return (
-        <div className="flex h-screen bg-slate-100 overflow-hidden">
+        <div className="flex h-screen bg-[#F4F5F7] overflow-hidden">
             {/* Sidebar */}
             <Sidebar
                 activeItem={activeNav}
@@ -97,7 +94,7 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                     </div>
 
                     {/* Client Table */}
-                    <div className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+                    <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
                         <ClientTable
                             data={filteredClients}
                             onRowClick={handleRowClick}
@@ -107,63 +104,66 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                 </main>
             </div>
 
-            {/* Detail Panel */}
-            <DetailPanel
-                client={selectedClient}
-                isOpen={showDetailPanel}
-                onClose={handleCloseDetail}
-                onSendReminder={handleSendReminder}
-                onViewOnboarding={handleViewOnboarding}
-            />
+            {/* Detail Panel - only render when open */}
+            {showDetailPanel && (
+                <DetailPanel
+                    client={selectedClient}
+                    isOpen={showDetailPanel}
+                    onClose={handleCloseDetail}
+                    onSendReminder={handleSendReminder}
+                    onViewOnboarding={handleViewOnboarding}
+                />
+            )}
 
-            {/* AI Chat Modal */}
+            {/* AI Chat Side Panel */}
             {showAIChat && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <>
                     {/* Backdrop */}
                     <div
-                        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
+                        className="fixed inset-0 bg-black/20 z-40"
                         onClick={() => setShowAIChat(false)}
                     />
 
-                    {/* Modal */}
-                    <div className="relative w-full max-w-4xl h-[80vh] bg-white rounded-2xl shadow-2xl overflow-hidden animate-scale-in">
+                    {/* Side Panel */}
+                    <div className="fixed right-0 top-0 h-full w-[480px] bg-white border-l border-[#DFE1E6] shadow-xl z-50 flex flex-col animate-slide-in-right">
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-violet-600 to-purple-600">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-white/20 rounded-lg">
-                                    <SparkleIcon size="md" className="text-white" />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold text-white">AI Assistant</h2>
-                                    <p className="text-sm text-violet-200">
-                                        Ask me anything about your clients
-                                    </p>
-                                </div>
-                            </div>
+                        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#DFE1E6] bg-[#FAFBFC]">
                             <button
+                                type="button"
                                 onClick={() => setShowAIChat(false)}
-                                className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
+                                className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#EBECF0] text-[#6B778C] hover:text-[#172B4D] transition-colors cursor-pointer"
                             >
-                                <CloseIcon size="md" />
+                                <ChevronRightIcon size="md" />
                             </button>
+                            <div className="p-1.5 bg-[#0052CC] rounded">
+                                <SparkleIcon size="sm" className="text-white" />
+                            </div>
+                            <div>
+                                <h2 className="text-[14px] font-semibold text-[#172B4D]">AI Assistant</h2>
+                                <p className="text-[11px] text-[#5E6C84]">Ask about your clients</p>
+                            </div>
                         </div>
 
                         {/* Chat Content */}
-                        <div className="h-[calc(100%-72px)]">
-                            <AIChat />
+                        <div className="flex-1 overflow-hidden">
+                            <AIChat
+                                clientId={selectedClient?.id}
+                                clientName={selectedClient?.clientName}
+                                allClients={clients.map(c => ({ id: c.id, name: c.clientName, email: c.email }))}
+                            />
                         </div>
                     </div>
-                </div>
+                </>
             )}
 
-            {/* Floating AI Button (when chat is closed) */}
+            {/* Floating AI Button */}
             {!showAIChat && (
                 <button
                     onClick={() => setShowAIChat(true)}
-                    className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-full shadow-lg shadow-violet-500/30 hover:shadow-xl hover:shadow-violet-500/40 hover:scale-105 transition-all duration-200 z-40"
+                    className="fixed bottom-4 right-4 p-2.5 bg-[#0052CC] text-white rounded-full shadow-md hover:bg-[#0747A6] hover:shadow-lg transition-all duration-150 z-40"
                     title="Open AI Assistant"
                 >
-                    <SparkleIcon size="lg" />
+                    <SparkleIcon size="sm" />
                 </button>
             )}
         </div>

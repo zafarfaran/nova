@@ -63,6 +63,59 @@ const tools: Anthropic.Tool[] = [
             required: ["clientId"],
         },
     },
+    {
+        name: "search_documents",
+        description: "Search for documents uploaded by clients. Can search by client ID, document type, filename, or status.",
+        input_schema: {
+            type: "object",
+            properties: {
+                clientId: {
+                    type: "string",
+                    description: "Filter by specific client ID",
+                },
+                query: {
+                    type: "string",
+                    description: "Search term for document filename",
+                },
+                documentType: {
+                    type: "string",
+                    description: "Filter by document type (e.g., INVOICE, RECEIPT, BANK_STATEMENT)",
+                },
+                status: {
+                    type: "string",
+                    description: "Filter by document status (pending, processing, extracted, validated, failed)",
+                },
+            },
+        },
+    },
+    {
+        name: "get_document_details",
+        description: "Get detailed information about a specific document including its validation results.",
+        input_schema: {
+            type: "object",
+            properties: {
+                documentId: {
+                    type: "string",
+                    description: "The document ID to look up",
+                },
+            },
+            required: ["documentId"],
+        },
+    },
+    {
+        name: "get_client_documents",
+        description: "Get all documents for a specific client, including their validation status.",
+        input_schema: {
+            type: "object",
+            properties: {
+                clientId: {
+                    type: "string",
+                    description: "The client ID to get documents for",
+                },
+            },
+            required: ["clientId"],
+        },
+    },
 ];
 
 // Tool execution functions
@@ -160,6 +213,197 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
                 return `Error fetching VAT info: ${error}`;
             }
 
+        case "search_documents":
+            try {
+                const whereClause: any = {};
+
+                if (toolInput.clientId) {
+                    const parsedClientId = parseInt(toolInput.clientId, 10);
+                    if (!isNaN(parsedClientId)) {
+                        whereClause.evidenceItem = {
+                            vatPeriod: {
+                                clientId: parsedClientId,
+                            },
+                        };
+                    }
+                }
+
+                if (toolInput.query) {
+                    whereClause.filename = { contains: toolInput.query, mode: "insensitive" };
+                }
+
+                if (toolInput.documentType) {
+                    whereClause.documentType = toolInput.documentType.toUpperCase();
+                }
+
+                if (toolInput.status) {
+                    whereClause.status = toolInput.status.toUpperCase();
+                }
+
+                const documents = await db.document.findMany({
+                    where: whereClause,
+                    take: 20,
+                    orderBy: { createdAt: "desc" },
+                    include: {
+                        evidenceItem: {
+                            include: {
+                                vatPeriod: {
+                                    include: {
+                                        client: {
+                                            select: { id: true, name: true },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+
+                if (documents.length === 0) {
+                    return `No documents found matching the search criteria.`;
+                }
+
+                return `Found ${documents.length} document(s):\n${documents
+                    .map((d: any) => {
+                        const clientName = d.evidenceItem?.vatPeriod?.client?.name || "Unknown Client";
+                        return `- ${d.filename} (${d.documentType || "Unknown Type"}) - Status: ${d.status || "Pending"} - Client: ${clientName} [Doc ID: ${d.id}]`;
+                    })
+                    .join("\n")}`;
+            } catch (error) {
+                return `Error searching documents: ${error}`;
+            }
+
+        case "get_document_details":
+            try {
+                const docId = parseInt(toolInput.documentId, 10);
+                if (isNaN(docId)) {
+                    return `Invalid document ID: ${toolInput.documentId}`;
+                }
+
+                const document = await db.document.findUnique({
+                    where: { id: docId },
+                    include: {
+                        evidenceItem: {
+                            include: {
+                                vatPeriod: {
+                                    include: {
+                                        client: {
+                                            select: { id: true, name: true, contactEmail: true },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+
+                if (!document) {
+                    return `Document not found with ID: ${docId}`;
+                }
+
+                const client = document.evidenceItem?.vatPeriod?.client;
+                const vatPeriod = document.evidenceItem?.vatPeriod;
+
+                let result = `Document Details:
+- Filename: ${document.filename}
+- Type: ${document.documentType || "Not specified"}
+- Status: ${document.status || "Pending"}
+- Uploaded: ${document.createdAt ? new Date(document.createdAt).toLocaleDateString() : "Unknown"}
+- File URL: ${document.fileUrl || "Not available"}`;
+
+                if (client) {
+                    result += `\n\nClient Information:
+- Name: ${client.name}
+- Email: ${client.contactEmail || "Not set"}
+- Client ID: ${client.id}`;
+                }
+
+                if (vatPeriod) {
+                    result += `\n\nVAT Period:
+- Period: ${new Date(vatPeriod.periodStart).toLocaleDateString()} - ${new Date(vatPeriod.periodEnd).toLocaleDateString()}
+- Status: ${vatPeriod.status}`;
+                }
+
+                return result;
+            } catch (error) {
+                return `Error fetching document details: ${error}`;
+            }
+
+        case "get_client_documents":
+            try {
+                const clientId = parseInt(toolInput.clientId, 10);
+                if (isNaN(clientId)) {
+                    return `Invalid client ID: ${toolInput.clientId}`;
+                }
+
+                const client = await db.client.findUnique({
+                    where: { id: clientId },
+                    include: {
+                        vatPeriods: {
+                            orderBy: { periodEnd: "desc" },
+                            take: 1,
+                            include: {
+                                evidenceItems: {
+                                    include: {
+                                        documents: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+
+                if (!client) {
+                    return `Client not found with ID: ${clientId}`;
+                }
+
+                const currentPeriod = client.vatPeriods[0];
+                if (!currentPeriod) {
+                    return `No VAT period found for client "${client.name}" (ID: ${clientId})`;
+                }
+
+                const allDocuments = currentPeriod.evidenceItems.flatMap(
+                    (item: any) => item.documents
+                );
+
+                if (allDocuments.length === 0) {
+                    return `No documents found for client "${client.name}" in the current VAT period.`;
+                }
+
+                const statusCounts = {
+                    pending: 0,
+                    processing: 0,
+                    extracted: 0,
+                    validated: 0,
+                    failed: 0,
+                };
+
+                allDocuments.forEach((doc: any) => {
+                    const status = (doc.status || "pending").toLowerCase();
+                    if (status in statusCounts) {
+                        statusCounts[status as keyof typeof statusCounts]++;
+                    }
+                });
+
+                let result = `Documents for ${client.name} (Current VAT Period):
+Total: ${allDocuments.length} document(s)
+
+Status Summary:
+- Validated: ${statusCounts.validated}
+- Failed: ${statusCounts.failed}
+- Extracted: ${statusCounts.extracted}
+- Processing: ${statusCounts.processing}
+- Pending: ${statusCounts.pending}
+
+Document List:\n${allDocuments
+                    .map((d: any) => `- ${d.filename} (${d.documentType || "Unknown"}) - ${d.status || "Pending"} [ID: ${d.id}]`)
+                    .join("\n")}`;
+
+                return result;
+            } catch (error) {
+                return `Error fetching client documents: ${error}`;
+            }
+
         default:
             return `Unknown tool: ${toolName}`;
     }
@@ -169,7 +413,26 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder();
 
     try {
-        const { messages } = await request.json();
+        const { messages, context } = await request.json();
+
+        // Build system prompt with context
+        let systemPrompt = `You are an AI assistant for an accountant's VAT compliance dashboard. You help accountants manage their clients' VAT returns and documents.
+
+You have access to tools to search for clients, documents, and VAT information. Use these tools when the user asks about specific clients or documents.
+
+IMPORTANT: When the user refers to "the document", "this document", "the client", or "this client" without specifying which one, use the context provided below to determine which client or document they're referring to.`;
+
+        if (context) {
+            if (context.current_client_id || context.current_client_name) {
+                systemPrompt += `\n\nCurrent Context:
+- Currently selected client: ${context.current_client_name || "Unknown"} (ID: ${context.current_client_id || "Unknown"})
+When the user asks about "the client" or "this client" or their documents without specifying a name, they are referring to this client.`;
+            }
+
+            if (context.available_clients && context.available_clients.length > 0) {
+                systemPrompt += `\n\nAvailable clients in the dashboard: ${context.available_clients.length} clients total.`;
+            }
+        }
 
         const stream = new ReadableStream({
             async start(controller) {
@@ -183,6 +446,7 @@ export async function POST(request: NextRequest) {
                     const messageStream = await anthropic.messages.create({
                         model: "claude-3-opus-20240229",
                         max_tokens: 4096,
+                        system: systemPrompt,
                         messages: conversationMessages,
                         tools: tools,
                         stream: true,
@@ -265,6 +529,7 @@ export async function POST(request: NextRequest) {
                                 const followUpStream = await anthropic.messages.create({
                                     model: "claude-3-opus-20240229",
                                     max_tokens: 4096,
+                                    system: systemPrompt,
                                     messages: conversationMessages,
                                     tools: tools,
                                     stream: true,
