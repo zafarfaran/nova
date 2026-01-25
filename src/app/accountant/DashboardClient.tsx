@@ -32,6 +32,7 @@ export function AccountantDashboardClient({ clients, metrics, user }: Accountant
     const [activeNav, setActiveNav] = useState("dashboard");
     const [searchQuery, setSearchQuery] = useState("");
     const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
+    const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
 
     // Refresh dashboard data from server
     const refreshDashboard = useCallback(() => {
@@ -104,8 +105,67 @@ export function AccountantDashboardClient({ clients, metrics, user }: Accountant
         setTimeout(() => setSelectedClient(null), 200);
     };
 
-    const handleSendReminder = (clientId: string) => {
-        console.log("Send reminder to client:", clientId);
+    const handleSendReminder = async (clientId: string) => {
+        if (sendingReminderId) return; // Prevent double-sends
+
+        const client = clients.find((c) => c.id === clientId);
+        if (!client) {
+            alert("Client not found");
+            return;
+        }
+
+        if (!client.email) {
+            alert("Client email not found. Please add an email address for this client.");
+            return;
+        }
+
+        // Prepare context data for the reminder email
+        const missingDocs = Math.max(0, client.documentsRequired - client.documentsUploaded);
+        const contextData = {
+            reminder_type: "document upload reminder",
+            documents_required: client.documentsRequired,
+            documents_uploaded: client.documentsUploaded,
+            documents_missing: missingDocs,
+            vat_period: client.vatPeriodLabel,
+            due_date: client.vatPeriodEnd.toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+            }),
+            has_bank_connection: client.hasBankConnection,
+            entity_type: client.entityType,
+            call_to_action: "Upload your documents to your Nova dashboard to stay on track.",
+        };
+
+        setSendingReminderId(clientId);
+
+        try {
+            const response = await fetch("/api/email/send-reminder", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    clientId: client.id,
+                    clientName: client.clientName,
+                    clientEmail: client.email,
+                    contextData,
+                }),
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert(
+                    `✓ Reminder sent successfully!\n\nTo: ${client.clientName} (${client.email})\n\nThe AI-generated email has been delivered with Nova branding.`
+                );
+            } else {
+                alert(`✗ Failed to send reminder\n\n${result.error || "Unknown error"}\n\nPlease check your SMTP settings and try again.`);
+            }
+        } catch (error) {
+            console.error("Error sending reminder:", error);
+            alert("✗ Failed to send reminder\n\nNetwork error. Please check your connection and try again.");
+        } finally {
+            setSendingReminderId(null);
+        }
     };
 
     const handleViewOnboarding = (clientId: string) => {
@@ -334,6 +394,7 @@ export function AccountantDashboardClient({ clients, metrics, user }: Accountant
                     onSendReminder={handleSendReminder}
                     onViewOnboarding={handleViewOnboarding}
                     onValidationComplete={refreshDashboard}
+                    isSendingReminder={sendingReminderId === selectedClient?.id}
                 />
             )}
 
