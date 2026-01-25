@@ -6,7 +6,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import audit, chaser, chat, clients, documents, evidence, validation, vat_periods
+from app.api.v1 import audit, chaser, chat, clients, documents, email, evidence, validation, vat_periods
 from app.config import get_settings
 
 # Configure logging
@@ -126,3 +126,4 @@ app.include_router(validation.router, prefix="/api/v1")
 app.include_router(chaser.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(email.router, prefix="/api/v1")

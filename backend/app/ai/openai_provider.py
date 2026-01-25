@@ -152,6 +152,21 @@ class OpenAIProvider(AIProvider):
         full_prompt = f"{prompt}\n\nText to analyze:\n{text}"
         return await self._analyze_text(full_prompt)
 
+    async def generate_text(
+        self, system_prompt: str, user_prompt: str
+    ) -> str:
+        """Generate text using system and user prompts."""
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=4096,
+        )
+
+        return response.choices[0].message.content or ""
+
     async def close(self) -> None:
         """Close underlying async client."""
         try:

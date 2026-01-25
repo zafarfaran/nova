@@ -39,7 +39,17 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Nova VAT Readiness Tool"
+    app_url: str = "https://nova-vat.com"  # Base URL for email links
     debug: bool = False
+
+    # Email/SMTP Configuration
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Nova VAT Assistant"
+    smtp_use_tls: bool = True
 
     def get_database_url(self) -> str:
         """Get SQLAlchemy database URL (PostgreSQL or SQLite fallback)."""

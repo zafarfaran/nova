@@ -67,6 +67,22 @@ class AIProvider(ABC):
         """
         pass
 
+    async def generate_text(
+        self, system_prompt: str, user_prompt: str
+    ) -> str:
+        """Generate text based on system and user prompts.
+
+        Args:
+            system_prompt: System-level instructions
+            user_prompt: User prompt/request
+
+        Returns:
+            Generated text
+        """
+        # Default implementation combines prompts
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        return await self.analyze_text("", full_prompt)
+
     async def close(self) -> None:
         """Optional cleanup hook for providers with async clients."""
         return None

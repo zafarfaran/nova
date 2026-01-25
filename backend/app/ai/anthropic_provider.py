@@ -198,6 +198,19 @@ class AnthropicProvider(AIProvider):
         full_prompt = f"{prompt}\n\nText to analyze:\n{text}"
         return await self._analyze_text(full_prompt)
 
+    async def generate_text(
+        self, system_prompt: str, user_prompt: str
+    ) -> str:
+        """Generate text using system and user prompts."""
+        message = await self.client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+
+        return message.content[0].text if message.content else ""
+
     async def close(self) -> None:
         """Close underlying async client."""
         try:

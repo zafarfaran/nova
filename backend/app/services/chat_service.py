@@ -19,6 +19,7 @@ You have access to tools to:
 - View and update document checklists
 - Find clients who need attention (missing documents, validation issues, or review stage)
 - Create new clients
+- Send emails to clients (reminders, document requests, notifications, etc.)
 
 Always be helpful, concise, and professional. When showing data, format it clearly.
 If asked about a specific client, use the tools to fetch real data.
@@ -174,7 +175,7 @@ class ChatService:
 
             # Execute tools and save results
             for tc in tool_calls:
-                result = self.tools.execute(tc["name"], tc["input"])
+                result = await self.tools.execute(tc["name"], tc["input"])
                 result_str = json.dumps(result, indent=2, default=str)
 
                 self._save_message(
@@ -252,7 +253,7 @@ class ChatService:
                     # Notify frontend about tool execution
                     yield f"data: {json.dumps({'type': 'tool_executing', 'tool': tool_name, 'input': tool_input, 'tool_call_id': tc['id']})}\n\n"
 
-                    result = self.tools.execute(tool_name, tool_input)
+                    result = await self.tools.execute(tool_name, tool_input)
                     result_str = json.dumps(result, indent=2, default=str)
                 except Exception as e:
                     tool_input = tool_input if "tool_input" in locals() else {}

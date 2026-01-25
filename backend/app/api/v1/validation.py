@@ -1,6 +1,7 @@
 """API routes for document validation."""
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -17,6 +18,12 @@ from app.services.validation_service import ValidationService
 from app.tasks.validation_tasks import validate_period_documents
 
 router = APIRouter(prefix="/validation", tags=["validation"])
+
+
+class DocumentRejectionRequest(BaseModel):
+    """Request body for document rejection."""
+    rejected_by: str
+    rejection_reason: str
 
 
 @router.post("/run/{doc_id}", response_model=ValidationRunResponse)
@@ -138,3 +145,56 @@ def run_client_validation(
         "client_id": client_id,
         "client_name": client.name,
     }
+
+
+@router.post("/reject/{doc_id}")
+async def reject_document(
+    doc_id: int,
+    rejection: DocumentRejectionRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Reject a document and send email notification to client.
+
+    This marks the document as failed and sends an email to the client
+    explaining why it was rejected.
+    """
+    from app.models.document import DocumentStatus
+    from app.services.email_notification_service import EmailNotificationService
+
+    doc_service = DocumentService(db)
+    doc = doc_service.get(doc_id)
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
+
+    # Update document status
+    doc.status = DocumentStatus.FAILED
+    doc.processing_error = f"Rejected by {rejection.rejected_by}: {rejection.rejection_reason}"
+    db.commit()
+
+    # Send rejection email
+    try:
+        email_service = EmailNotificationService(db=db)
+        email_sent = await email_service.send_document_rejection_email(
+            document_id=doc_id,
+            rejected_by=rejection.rejected_by,
+            rejection_reason=rejection.rejection_reason,
+        )
+
+        return {
+            "message": "Document rejected successfully",
+            "document_id": doc_id,
+            "email_sent": email_sent,
+            "rejected_by": rejection.rejected_by,
+        }
+    except Exception as e:
+        # Document is still rejected even if email fails
+        return {
+            "message": "Document rejected but email notification failed",
+            "document_id": doc_id,
+            "email_sent": False,
+            "error": str(e),
+            "rejected_by": rejection.rejected_by,
+        }

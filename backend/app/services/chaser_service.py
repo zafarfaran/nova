@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.ai import get_ai_provider
 from app.models.chaser import ChaserRequest, ChaserResponse, ChaserStatus
+from app.schemas.email import EmailPurpose, EmailRequest, EmailTone
+from app.services.email_service import EmailService
 from app.services.evidence_service import EvidenceService
 
 
@@ -87,8 +89,44 @@ class ChaserService:
         self.db.refresh(chaser)
         return chaser
 
+    async def send_chaser_email(self, chaser_id: int) -> ChaserRequest | None:
+        """Generate message (if needed) and send the chaser email."""
+        chaser = self.get(chaser_id)
+        if not chaser:
+            return None
+
+        # Generate message if not already generated
+        if not chaser.message_body or not chaser.subject:
+            chaser = await self.generate_message(chaser_id)
+            if not chaser:
+                return None
+
+        # Send the email
+        ai_provider = get_ai_provider()
+        email_service = EmailService(db=self.db, ai_provider=ai_provider)
+
+        email_request = EmailRequest(
+            to_email=chaser.recipient_email,
+            to_name=chaser.recipient_name,
+            subject=chaser.subject,
+            body=chaser.message_body,
+            purpose=EmailPurpose.MISSING_DOCUMENTS,
+            tone=EmailTone.PROFESSIONAL,
+        )
+
+        response = await email_service.send_email(email_request)
+
+        if response.success:
+            # Mark as sent
+            chaser.status = ChaserStatus.SENT
+            chaser.sent_at = datetime.utcnow()
+            self.db.commit()
+            self.db.refresh(chaser)
+
+        return chaser
+
     def mark_sent(self, chaser_id: int) -> ChaserRequest | None:
-        """Mark a chaser request as sent."""
+        """Mark a chaser request as sent (without actually sending email)."""
         chaser = self.get(chaser_id)
         if not chaser:
             return None

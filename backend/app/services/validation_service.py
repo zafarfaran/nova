@@ -25,6 +25,26 @@ from app.models.vat_period import VATPeriod
 logger = logging.getLogger(__name__)
 
 
+def _send_validation_failure_email_async(db: Session, document_id: int, validation_results: list[ValidationResult]) -> None:
+    """Send validation failure email in background (sync wrapper)."""
+    import asyncio
+    from app.services.email_notification_service import EmailNotificationService
+
+    async def _send():
+        email_service = EmailNotificationService(db=db)
+        await email_service.send_validation_failure_email(document_id, validation_results)
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_send())
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.error(f"Failed to send validation failure email: {e}", exc_info=True)
+
+
 class ValidationService:
     """Service for validating documents."""
 
@@ -148,6 +168,21 @@ class ValidationService:
 
         for result in results:
             self.db.refresh(result)
+
+        # Send email notification if validation failed
+        if has_failures or has_warnings:
+            try:
+                import threading
+                # Send email in background thread to not block validation
+                thread = threading.Thread(
+                    target=_send_validation_failure_email_async,
+                    args=(self.db, document_id, results),
+                    daemon=True
+                )
+                thread.start()
+                logger.info(f"Queued validation failure email for document {document_id}")
+            except Exception as e:
+                logger.error(f"Failed to queue validation failure email: {e}", exc_info=True)
 
         return results
 

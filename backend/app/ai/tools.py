@@ -1,5 +1,6 @@
 """AI tools/functions for the chat interface - using unified clients table."""
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -12,6 +13,9 @@ from app.models.checklist_item import ChecklistItem
 from app.models.document import Document, DocumentStatus
 from app.models.evidence import EvidenceItem
 from app.models.validation import ValidationResult, ValidationStatus
+from app.schemas.email import EmailPurpose, EmailTone
+
+logger = logging.getLogger(__name__)
 
 
 # Tool definitions for function calling
@@ -131,6 +135,50 @@ TOOL_DEFINITIONS = [
             "required": ["item_id", "status"],
         },
     },
+    {
+        "name": "send_email",
+        "description": "Send an email to a client. The AI can generate professional email content based on the purpose and context. Use this to send reminders, request missing documents, notify about VAT returns, or send general communications.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "to_email": {
+                    "type": "string",
+                    "description": "Recipient email address",
+                },
+                "to_name": {
+                    "type": "string",
+                    "description": "Recipient name (optional)",
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject (optional - will be AI-generated if not provided)",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Email body (optional - will be AI-generated if not provided)",
+                },
+                "purpose": {
+                    "type": "string",
+                    "enum": ["reminder", "missing_documents", "vat_return_ready", "validation_issues", "invoice_request", "follow_up", "welcome", "general"],
+                    "description": "The purpose of the email (used for AI generation if subject/body not provided)",
+                },
+                "tone": {
+                    "type": "string",
+                    "enum": ["formal", "professional", "friendly", "urgent"],
+                    "description": "The tone of the email (default: professional)",
+                },
+                "client_id": {
+                    "type": "integer",
+                    "description": "Client ID for context (optional)",
+                },
+                "context_data": {
+                    "type": "object",
+                    "description": "Additional context for email generation (e.g., missing_items, due_date)",
+                },
+            },
+            "required": ["to_email", "purpose"],
+        },
+    },
 ]
 
 
@@ -140,14 +188,27 @@ class ChatTools:
     def __init__(self, db: Session):
         self.db = db
 
-    def execute(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool and return the result."""
         method = getattr(self, f"_tool_{tool_name}", None)
         if not method:
             return {"error": f"Unknown tool: {tool_name}"}
         try:
-            return method(**arguments)
+            logger.info(f"Executing tool {tool_name} with arguments: {arguments}")
+
+            # Check if method is async
+            import inspect
+            if inspect.iscoroutinefunction(method):
+                return await method(**arguments)
+            else:
+                return method(**arguments)
+        except TypeError as e:
+            logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
+            logger.error(f"Arguments received: {arguments}")
+            logger.error(f"Method signature: {inspect.signature(method)}")
+            return {"error": f"Invalid arguments for {tool_name}: {str(e)}"}
         except Exception as e:
+            logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
             return {"error": str(e)}
 
     def _tool_list_clients(self) -> dict[str, Any]:
@@ -454,16 +515,26 @@ class ChatTools:
             ),
         }
 
-    def _tool_create_client(
+    async def _tool_create_client(
         self,
-        client_name: str,
-        email: str,
+        client_name: str | None = None,
+        email: str | None = None,
+        name: str | None = None,  # Alternative parameter name
         entity_type: str = "limited_company",
         vat_scheme: str = "standard",
         vat_number: str | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
         """Create a new client."""
+        # Handle both 'client_name' and 'name' parameter names
+        if not client_name and name:
+            client_name = name
+
+        if not client_name or not email:
+            logger.warning(f"create_client called without required params: client_name={client_name}, email={email}")
+            return {"error": "Both client_name (business name) and email are required to create a client. Please ask the user for these details."}
+
+        logger.info(f"Creating client: {client_name}, email: {email}")
         # Check if client with same email already exists
         existing = self.db.query(Client).filter(Client.contact_email == email).first()
         if existing:
@@ -558,9 +629,24 @@ class ChatTools:
         quarter_num = (period_start.month - 1) // 3 + 1
         vat_period_label = f"Q{quarter_num} {period_start.year}"
 
+        onboarding_link = f"/onboard/{client.id}"
+
+        # Send welcome email asynchronously
+        try:
+            from app.services.email_notification_service import EmailNotificationService
+            email_notif_service = EmailNotificationService(db=self.db)
+            await email_notif_service.send_welcome_email(
+                client_id=client.id,
+                onboarding_link=onboarding_link
+            )
+            logger.info(f"Welcome email sent to new client {client.name}")
+        except Exception as e:
+            logger.error(f"Failed to send welcome email: {e}", exc_info=True)
+            # Don't fail client creation if email fails
+
         return {
             "success": True,
-            "message": f"Client '{client_name}' created successfully",
+            "message": f"Client '{client_name}' created successfully. Welcome email sent to {email}.",
             "client": {
                 "id": client.id,
                 "name": client.name,
@@ -569,7 +655,7 @@ class ChatTools:
                 "vat_scheme": client.vat_scheme,
                 "vat_period": vat_period_label,
             },
-            "onboarding_link": f"/onboard/{client.id}",
+            "onboarding_link": onboarding_link,
         }
 
     def _tool_update_checklist_item(self, item_id: int, status: str) -> dict[str, Any]:
@@ -594,3 +680,69 @@ class ChatTools:
                 "status": item.status,
             },
         }
+
+    async def _tool_send_email(
+        self,
+        to_email: str,
+        purpose: str,
+        to_name: str | None = None,
+        subject: str | None = None,
+        body: str | None = None,
+        tone: str = "professional",
+        client_id: int | None = None,
+        context_data: dict | None = None,
+    ) -> dict[str, Any]:
+        """Send an email to a client."""
+        from app.ai import get_ai_provider
+        from app.schemas.email import EmailRequest
+        from app.services.email_service import EmailService
+
+        logger.info(f"Tool send_email called: to={to_email}, purpose={purpose}, tone={tone}")
+
+        # Convert string enums to proper enum types
+        try:
+            email_purpose = EmailPurpose(purpose)
+            email_tone = EmailTone(tone)
+        except ValueError as e:
+            logger.error(f"Invalid purpose or tone: {e}")
+            return {"error": f"Invalid purpose or tone: {str(e)}"}
+
+        # Create email request
+        email_request = EmailRequest(
+            to_email=to_email,
+            to_name=to_name,
+            subject=subject,
+            body=body,
+            purpose=email_purpose,
+            tone=email_tone,
+            client_id=client_id,
+            context_data=context_data,
+        )
+
+        # Send email using email service
+        try:
+            ai_provider = get_ai_provider()
+            email_service = EmailService(db=self.db, ai_provider=ai_provider)
+
+            logger.info("Calling email service to send email...")
+            response = await email_service.send_email(email_request)
+            logger.info(f"Email service response: success={response.success}")
+
+            if response.success:
+                return {
+                    "success": True,
+                    "message": f"Email sent successfully to {to_email}",
+                    "subject": response.generated_subject or subject,
+                    "sent_at": response.sent_at.isoformat() if response.sent_at else None,
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": response.message,
+                }
+        except Exception as e:
+            logger.error(f"Error sending email: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Failed to send email: {str(e)}",
+            }

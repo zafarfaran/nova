@@ -85,13 +85,33 @@ async def generate_chaser_message(
     return ChaserRequestResponse.model_validate(chaser)
 
 
+@router.post("/requests/{chaser_id}/send-email", response_model=ChaserRequestResponse)
+async def send_chaser_email(
+    chaser_id: int, db: Session = Depends(get_db)
+) -> ChaserRequestResponse:
+    """Generate and send the chaser email to the client.
+
+    This will:
+    1. Generate the message if not already generated
+    2. Send the email via SMTP
+    3. Mark the chaser as sent
+    """
+    service = ChaserService(db)
+    chaser = await service.send_chaser_email(chaser_id)
+    if not chaser:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Chaser request not found"
+        )
+    return ChaserRequestResponse.model_validate(chaser)
+
+
 @router.post("/requests/{chaser_id}/send", response_model=ChaserRequestResponse)
 def send_chaser_request(
     chaser_id: int, db: Session = Depends(get_db)
 ) -> ChaserRequestResponse:
-    """Mark a chaser request as sent.
+    """Mark a chaser request as sent (without actually sending email).
 
-    Note: Actual email sending would be implemented separately.
+    Use /send-email endpoint to actually send the email.
     """
     service = ChaserService(db)
     chaser = service.mark_sent(chaser_id)
