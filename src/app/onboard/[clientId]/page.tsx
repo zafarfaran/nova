@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { db } from "~/server/db";
+
 import { OnboardingContent } from "./OnboardingContent";
 
 interface PageProps {
@@ -39,6 +40,7 @@ export default async function OnboardingPage({ params }: PageProps) {
     return (
         <div className="min-h-screen bg-[#F4F5F7]">
             <OnboardingContent client={client} latestVatPeriod={latestVatPeriod} />
+
         </div>
     );
 }

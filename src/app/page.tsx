@@ -1,37 +1,62 @@
-import Link from "next/link";
+import { auth } from "~/server/auth";
+import { SignInButton } from "./_components/SignInButton";
+import { SignOutButton } from "./_components/SignOutButton";
+import { HeroSection } from "./_components/HeroSection";
+import { BentoGrid } from "./_components/BentoGrid";
+import { Testimonials } from "./_components/Testimonials";
+import { CTASection } from "./_components/CTASection";
+import { DashboardEmbed } from "./_components/DashboardEmbed";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await auth();
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
-      <div className="container flex flex-col items-center justify-center gap-12 px-4 py-16">
-        <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-[5rem]">
-          Create <span className="text-[hsl(280,100%,70%)]">T3</span> App
-        </h1>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-8">
-          <Link
-            className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 text-white hover:bg-white/20"
-            href="https://create.t3.gg/en/usage/first-steps"
-            target="_blank"
-          >
-            <h3 className="text-2xl font-bold">First Steps →</h3>
-            <div className="text-lg">
-              Just the basics - Everything you need to know to set up your
-              database and authentication.
+    <main className="min-h-screen bg-black">
+      {/* Navigation */}
+      <nav className="border-b border-slate-800 bg-black/50 sticky top-0 z-50 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-white rounded-md flex items-center justify-center">
+              <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
             </div>
-          </Link>
-          <Link
-            className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 text-white hover:bg-white/20"
-            href="https://create.t3.gg/en/introduction"
-            target="_blank"
-          >
-            <h3 className="text-2xl font-bold">Documentation →</h3>
-            <div className="text-lg">
-              Learn more about Create T3 App, the libraries it uses, and how to
-              deploy it.
-            </div>
-          </Link>
+            <span className="text-xl font-semibold text-white">Nova</span>
+          </div>
+          {session?.user ? <SignOutButton /> : <SignInButton />}
         </div>
-      </div>
+      </nav>
+
+      <HeroSection isLoggedIn={!!session?.user} userName={session?.user?.name} />
+
+      {session?.user && <DashboardEmbed />}
+
+      {!session?.user && (
+        <>
+          <BentoGrid />
+          <Testimonials />
+          <CTASection />
+        </>
+      )}
+
+      {/* Footer */}
+      <footer className="border-t border-slate-800 bg-black py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="flex items-center space-x-2 mb-4 md:mb-0">
+              <div className="w-8 h-8 bg-white rounded-md flex items-center justify-center">
+                <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <span className="text-lg font-semibold text-white">Nova</span>
+            </div>
+            <p className="text-sm text-slate-400">
+              © 2026 Nova. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }

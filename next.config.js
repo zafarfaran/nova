@@ -5,6 +5,15 @@
 import "./src/env.js";
 
 /** @type {import("next").NextConfig} */
-const config = {};
+const config = {
+  webpack: (config, { isServer }) => {
+    // Exclude backend directory from webpack bundling
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: ['**/backend/**', '**/node_modules/**'],
+    };
+    return config;
+  },
+};
 
 export default config;

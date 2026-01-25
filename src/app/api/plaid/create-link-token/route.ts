@@ -28,11 +28,16 @@ export async function POST(request: NextRequest) {
             user: {
                 client_user_id: String(clientId),
             },
-            client_name: "VAT Pack Portal",
-            products: [Products.Auth, Products.Transactions],
+            client_name: "Nova VAT Portal",
+            products: [Products.Transactions],
             country_codes: [CountryCode.Gb, CountryCode.Us],
             language: "en",
             webhook: `${process.env.NEXTAUTH_URL}/api/plaid/webhook`,
+            account_filters: {
+                depository: {
+                    account_subtypes: ["checking" as any, "savings" as any],
+                },
+            },
         });
 
         return NextResponse.json({ link_token: response.data.link_token });

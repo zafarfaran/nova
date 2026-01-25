@@ -81,6 +81,13 @@ export async function POST(request: NextRequest) {
             )
         );
 
+        // Fetch transactions in the background (don't wait for it)
+        fetch(`${process.env.NEXTAUTH_URL}/api/plaid/fetch-transactions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId: clientIdNum }),
+        }).catch((err) => console.error("Error triggering transaction fetch:", err));
+
         return NextResponse.json({
             success: true,
             accounts: bankConnections.map((conn) => ({
