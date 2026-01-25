@@ -683,6 +683,14 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                 ) : (
                     <div className="p-4 space-y-3">
                         {messages.map((message) => {
+                            if (
+                                showTypingIndicator &&
+                                message.kind === "text" &&
+                                message.role === "assistant" &&
+                                message.content === ""
+                            ) {
+                                return null;
+                            }
                             if (message.kind === "tool") {
                                 return (
                                     <div key={message.id} className="flex justify-start">
@@ -761,10 +769,8 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
 
                         {showTypingIndicator && (
                             <div className="flex justify-start">
-                                <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0">
-                                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                                    </svg>
+                                <div className="w-6 h-6 rounded-full bg-white border border-[#DFE1E6] flex items-center justify-center mr-2 flex-shrink-0">
+                                    <img src="/logo.svg" alt="Nova" className="h-4 w-4" />
                                 </div>
                                 <div className="bg-[#F4F5F7] px-3 py-2 rounded-lg">
                                     <div className="flex gap-1">

@@ -176,7 +176,7 @@ export function ClientTable({ data, onRowClick, selectedId, onDeleteClient }: Cl
     return (
         <div className="bg-white rounded border border-[#DFE1E6] overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[1fr_90px_110px_140px_90px_80px_36px] gap-0 bg-[#FAFBFC] border-b-2 border-[#DFE1E6]">
+            <div className="grid grid-cols-[minmax(220px,1fr)_100px_120px_150px_100px_120px_44px] gap-0 bg-[#FAFBFC] border-b-2 border-[#DFE1E6]">
                 <div className="px-4 py-2.5 text-[11px] font-semibold text-[#5E6C84] uppercase tracking-wider">
                     Client
                 </div>
@@ -224,7 +224,7 @@ export function ClientTable({ data, onRowClick, selectedId, onDeleteClient }: Cl
                                                 onRowClick?.(client);
                                             }}
                                             className={`
-                                                grid grid-cols-[1fr_90px_110px_140px_90px_80px_36px] gap-0
+                                                grid grid-cols-[minmax(220px,1fr)_100px_120px_150px_100px_120px_44px] gap-0
                                                 hover:bg-[#F4F5F7] cursor-pointer transition-colors duration-100
                                                 border-b border-[#EBECF0]
                                                 ${selectedId === client.id ? "bg-[#DEEBFF] hover:bg-[#DEEBFF]" : ""}
@@ -276,7 +276,7 @@ export function ClientTable({ data, onRowClick, selectedId, onDeleteClient }: Cl
                                             </div>
 
                                             {/* More actions */}
-                                            <div className="px-1 py-3 flex items-center justify-center">
+                                            <div className="px-2 py-3 flex items-center justify-center">
                                                 <div className="relative">
                                                     <button
                                                         onClick={(event) => {
