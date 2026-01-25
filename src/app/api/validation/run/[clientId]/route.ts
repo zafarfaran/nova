@@ -5,10 +5,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // POST - Run validation for all documents for a client via Python backend
 export async function POST(
     request: NextRequest,
-    { params }: { params: { clientId: string } }
+    { params }: { params: Promise<{ clientId: string }> }
 ) {
     try {
-        const clientId = params.clientId;
+        const { clientId } = await params;
 
         if (!clientId) {
             return NextResponse.json(

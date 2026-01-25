@@ -6,10 +6,11 @@ import crypto from "crypto";
 // Syncs ChecklistItem uploads to Document table, then returns with validation results
 export async function GET(
     request: NextRequest,
-    { params }: { params: { clientId: string } }
+    { params }: { params: Promise<{ clientId: string }> }
 ) {
     try {
-        const clientId = parseInt(params.clientId);
+        const { clientId: clientIdParam } = await params;
+        const clientId = parseInt(clientIdParam);
 
         if (isNaN(clientId)) {
             return NextResponse.json(
@@ -99,23 +100,51 @@ export async function GET(
         ) || [];
 
         // Transform documents to expected format
-        const documents = allDocuments.map((doc) => ({
-            id: doc.id.toString(),
-            filename: doc.filename,
-            documentType: doc.documentType || "OTHER",
-            status: (doc.status || "PENDING").toLowerCase(),
-            uploadedAt: doc.createdAt,
-            validationResults: doc.validationResults.map((r) => ({
-                id: r.id.toString(),
-                ruleType: r.ruleType,
-                status: r.status.toLowerCase(),
-                message: r.message,
-                details: r.details,
-                fieldName: r.fieldName,
-                expectedValue: r.expectedValue,
-                actualValue: r.actualValue,
-            })),
+        const uploadedDocuments = allDocuments.map((doc) => {
+            // Determine actual status - documents marked as VALIDATED but without
+            // validation results should be treated as EXTRACTED (needs validation)
+            let actualStatus = (doc.status || "PENDING").toLowerCase();
+            if (actualStatus === "validated" && doc.validationResults.length === 0) {
+                actualStatus = "extracted"; // Needs validation - no results yet
+            }
+
+            return {
+                id: doc.id.toString(),
+                filename: doc.filename,
+                documentType: doc.documentType || "OTHER",
+                status: actualStatus,
+                uploadedAt: doc.createdAt,
+                validationResults: doc.validationResults.map((r) => ({
+                    id: r.id.toString(),
+                    ruleType: r.ruleType,
+                    status: r.status.toLowerCase(),
+                    message: r.message,
+                    details: r.details,
+                    fieldName: r.fieldName,
+                    expectedValue: r.expectedValue,
+                    actualValue: r.actualValue,
+                })),
+            };
+        });
+
+        // Get required document types from checklist items that are NOT uploaded
+        const missingItems = client.checklistItems.filter(
+            (item) => item.required && item.status !== "uploaded"
+        );
+
+        // Create "not provided" entries for missing required documents
+        const missingDocuments = missingItems.map((item) => ({
+            id: `missing-${item.id}`,
+            filename: item.title,
+            documentType: mapItemIdToDocType(item.itemId),
+            status: "not_provided",
+            uploadedAt: null,
+            validationResults: [],
+            isMissing: true,
         }));
+
+        // Combine uploaded and missing documents
+        const documents = [...uploadedDocuments, ...missingDocuments];
 
         // Calculate summary
         const summary = {
@@ -128,6 +157,9 @@ export async function GET(
             ).length,
             pendingDocuments: documents.filter(
                 (d) => d.status === "pending" || d.status === "processing" || d.status === "extracted"
+            ).length,
+            notProvidedDocuments: documents.filter(
+                (d) => d.status === "not_provided"
             ).length,
             passedValidations: documents
                 .flatMap((d) => d.validationResults)
@@ -260,8 +292,16 @@ function mapItemIdToDocType(itemId: string): any {
         "purchase_invoices": "INVOICE",
         "bank_statements": "BANK_STATEMENT",
         "receipts": "RECEIPT",
+        "expense_receipts": "RECEIPT",
+        "expense_receipt": "RECEIPT",
         "vat_certificate": "VAT_CERTIFICATE",
+        "vat_certificates": "VAT_CERTIFICATE",
         "contracts": "CONTRACT",
+        "contract": "CONTRACT",
+        "payroll": "PAYROLL",
+        "payroll_records": "PAYROLL",
+        "payslip": "PAYROLL",
+        "payslips": "PAYROLL",
     };
     return mapping[itemId] || "OTHER";
 }

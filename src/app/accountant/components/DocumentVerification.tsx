@@ -20,7 +20,7 @@ export type RuleType =
 export type ValidationStatus = "passed" | "failed" | "warning" | "skipped" | "pending";
 
 // Document status
-export type DocumentStatus = "pending" | "processing" | "extracted" | "validated" | "failed";
+export type DocumentStatus = "pending" | "processing" | "extracted" | "validated" | "failed" | "not_provided";
 
 export interface ValidationResult {
     id: string;
@@ -47,6 +47,7 @@ export interface VerificationSummary {
     validatedDocuments: number;
     failedDocuments: number;
     pendingDocuments: number;
+    notProvidedDocuments: number;
     passedValidations: number;
     failedValidations: number;
     warningValidations: number;
@@ -80,6 +81,7 @@ const docStatusConfig: Record<DocumentStatus, { bg: string; color: string; label
     extracted: { bg: "#FFFAE6", color: "#974F0C", label: "EXTRACTED" },
     validated: { bg: "#E3FCEF", color: "#006644", label: "VALIDATED" },
     failed: { bg: "#FFEBE6", color: "#BF2600", label: "FAILED" },
+    not_provided: { bg: "#F4F5F7", color: "#5E6C84", label: "NOT PROVIDED" },
 };
 
 // Status badge
@@ -154,9 +156,30 @@ function SpinnerIcon() {
 function DocumentItem({ doc }: { doc: DocumentVerificationData }) {
     const [expanded, setExpanded] = useState(false);
 
+    const isNotProvided = doc.status === "not_provided";
     const passed = doc.validationResults.filter((r) => r.status === "passed").length;
     const failed = doc.validationResults.filter((r) => r.status === "failed").length;
     const warnings = doc.validationResults.filter((r) => r.status === "warning").length;
+
+    // For not_provided documents, show a non-expandable item
+    if (isNotProvided) {
+        return (
+            <div className="border border-[#DFE1E6] rounded overflow-hidden opacity-60">
+                <div className="w-full flex items-center gap-3 px-3 py-2 bg-[#F4F5F7]">
+                    <div className="w-4 h-4 flex items-center justify-center text-[#5E6C84]">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-medium text-[#5E6C84] truncate">{doc.filename}</p>
+                        <p className="text-[10px] text-[#97A0AF] uppercase">{doc.documentType.replace(/_/g, " ")} - Required</p>
+                    </div>
+                    <StatusBadge status={doc.status} type="document" />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="border border-[#DFE1E6] rounded overflow-hidden">
@@ -256,7 +279,8 @@ function SummaryStats({ summary }: { summary: VerificationSummary }) {
         { label: "Validated", value: summary.validatedDocuments, color: "#36B37E" },
         { label: "Failed", value: summary.failedDocuments, color: "#DE350B" },
         { label: "Pending", value: summary.pendingDocuments, color: "#0052CC" },
-    ];
+        { label: "Not Provided", value: summary.notProvidedDocuments, color: "#5E6C84" },
+    ].filter(stat => stat.value > 0);
 
     return (
         <div className="flex items-center gap-4 mb-3">
@@ -288,6 +312,7 @@ async function fetchVerificationData(clientId: string): Promise<{
             validatedDocuments: 0,
             failedDocuments: 0,
             pendingDocuments: 0,
+            notProvidedDocuments: 0,
             passedValidations: 0,
             failedValidations: 0,
             warningValidations: 0,
@@ -383,12 +408,14 @@ interface DocumentVerificationProps {
     clientId?: string;
     documents?: DocumentVerificationData[];
     summary?: VerificationSummary;
+    onValidationComplete?: () => void;
 }
 
 export function DocumentVerification({
     clientId,
     documents: initialDocuments,
     summary: initialSummary,
+    onValidationComplete,
 }: DocumentVerificationProps) {
     const [documents, setDocuments] = useState<DocumentVerificationData[]>(initialDocuments || []);
     const [summary, setSummary] = useState<VerificationSummary | undefined>(initialSummary);
@@ -439,16 +466,24 @@ export function DocumentVerification({
             return;
         }
 
+        // Filter out "not_provided" documents - they can't be validated
+        const providedDocs = documents.filter(d => d.status !== "not_provided");
+        const notProvidedCount = documents.filter(d => d.status === "not_provided").length;
+
         // Check if there are documents ready to validate (status = extracted)
-        const extractedDocs = documents.filter(d => d.status === "extracted");
+        const extractedDocs = providedDocs.filter(d => d.status === "extracted");
         if (extractedDocs.length === 0) {
-            const pendingDocs = documents.filter(d => d.status === "pending" || d.status === "processing");
+            const pendingDocs = providedDocs.filter(d => d.status === "pending" || d.status === "processing");
             if (pendingDocs.length > 0) {
                 setError(`${pendingDocs.length} document(s) still being processed by AI. Wait for extraction to complete before validating.`);
-            } else if (documents.length === 0) {
-                setError("No documents found to validate. Upload documents first.");
+            } else if (providedDocs.length === 0) {
+                if (notProvidedCount > 0) {
+                    setError(`${notProvidedCount} required document(s) not yet uploaded. Upload documents first.`);
+                } else {
+                    setError("No documents found to validate. Upload documents first.");
+                }
             } else {
-                setError("All documents have already been validated.");
+                setError("All uploaded documents have already been validated.");
             }
             return;
         }
@@ -481,26 +516,39 @@ export function DocumentVerification({
                 setDocuments(data.documents);
                 setSummary(data.summary);
 
-                // Check if any documents are still pending validation
-                const pendingCount = data.documents.filter(
+                // Filter out "not_provided" documents - they can't be validated
+                const providedDocs = data.documents.filter(d => d.status !== "not_provided");
+
+                // Check if any provided documents are still pending validation
+                const pendingCount = providedDocs.filter(
                     d => d.status === "pending" || d.status === "processing" || d.status === "extracted"
                 ).length;
 
-                const validatedCount = data.documents.filter(d => d.status === "validated").length;
-                const failedCount = data.documents.filter(d => d.status === "failed").length;
+                const validatedCount = providedDocs.filter(d => d.status === "validated").length;
+                const failedCount = providedDocs.filter(d => d.status === "failed").length;
+                const processedCount = validatedCount + failedCount;
 
-                setStatusMessage(`Validating... ${validatedCount + failedCount}/${data.documents.length} documents processed`);
+                // Only show progress if there are provided documents
+                if (providedDocs.length > 0) {
+                    setStatusMessage(`Validating... ${processedCount}/${providedDocs.length} documents processed`);
+                }
 
-                // If all documents are processed or max attempts reached
+                // If all provided documents are processed or max attempts reached
                 if (pendingCount === 0 || attempts >= maxAttempts) {
                     setIsRunning(false);
-                    if (pendingCount === 0) {
+                    if (pendingCount === 0 && providedDocs.length > 0) {
                         setStatusMessage(`Validation complete! ${validatedCount} passed, ${failedCount} failed`);
                         // Clear success message after 3 seconds
                         setTimeout(() => setStatusMessage(null), 3000);
-                    } else {
+                        // Notify parent to refresh dashboard data
+                        onValidationComplete?.();
+                    } else if (pendingCount > 0) {
+                        // Don't show "complete" message - validation is still in progress
                         setStatusMessage("Validation still processing in background. Click refresh to check status.");
                         setTimeout(() => setStatusMessage(null), 5000);
+                    } else {
+                        // No provided documents to validate
+                        setStatusMessage(null);
                     }
                     return;
                 }
@@ -533,13 +581,16 @@ export function DocumentVerification({
         validatedDocuments: documents.filter((d) => d.status === "validated").length,
         failedDocuments: documents.filter((d) => d.status === "failed").length,
         pendingDocuments: documents.filter((d) => d.status === "pending" || d.status === "processing" || d.status === "extracted").length,
+        notProvidedDocuments: documents.filter((d) => d.status === "not_provided").length,
         passedValidations: documents.flatMap((d) => d.validationResults).filter((r) => r.status === "passed").length,
         failedValidations: documents.flatMap((d) => d.validationResults).filter((r) => r.status === "failed").length,
         warningValidations: documents.flatMap((d) => d.validationResults).filter((r) => r.status === "warning").length,
     };
 
-    const validationRate = calculatedSummary.totalDocuments > 0
-        ? Math.round((calculatedSummary.validatedDocuments / calculatedSummary.totalDocuments) * 100)
+    // Calculate validation rate (excluding not_provided documents from the denominator)
+    const providedDocuments = calculatedSummary.totalDocuments - calculatedSummary.notProvidedDocuments;
+    const validationRate = providedDocuments > 0
+        ? Math.round((calculatedSummary.validatedDocuments / providedDocuments) * 100)
         : 0;
 
     return (
@@ -654,7 +705,13 @@ export function DocumentVerification({
             {documents.length > 0 && (
                 <div className="mt-3 p-3 bg-[#F4F5F7] rounded">
                     <p className="text-[10px] font-semibold text-[#5E6C84] uppercase mb-2">Document Status</p>
-                    <div className="grid grid-cols-5 gap-1 text-center">
+                    <div className="grid grid-cols-6 gap-1 text-center">
+                        <div className="p-1.5 bg-white rounded">
+                            <p className="text-[14px] font-semibold text-[#5E6C84]">
+                                {documents.filter(d => d.status === "not_provided").length}
+                            </p>
+                            <p className="text-[7px] text-[#5E6C84] uppercase">Not Provided</p>
+                        </div>
                         <div className="p-1.5 bg-white rounded">
                             <p className="text-[14px] font-semibold text-[#0747A6]">
                                 {documents.filter(d => d.status === "pending").length}

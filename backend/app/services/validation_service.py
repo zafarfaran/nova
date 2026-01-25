@@ -1,11 +1,16 @@
 """Service layer for document validation."""
 
+import asyncio
+import logging
 import re
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.agents import AgentRegistry, Severity as AgentSeverity
+from app.ai.anthropic_provider import AnthropicProvider
 from app.core.vat_rules import (
     CALCULATION_TOLERANCE,
     VALID_VAT_RATES,
@@ -16,15 +21,69 @@ from app.models.evidence import EvidenceItem
 from app.models.validation import RuleType, ValidationResult, ValidationStatus
 from app.models.vat_period import VATPeriod
 
+logger = logging.getLogger(__name__)
+
 
 class ValidationService:
     """Service for validating documents."""
 
-    def __init__(self, db: Session):
-        self.db = db
+    # Document type to validator mapping (both lowercase enum values and uppercase for flexibility)
+    DOCUMENT_TYPE_VALIDATORS = {
+        # Lowercase (Python enum values)
+        "invoice": "_validate_invoice",
+        "sales_invoice": "_validate_invoice",
+        "purchase_invoice": "_validate_invoice",
+        "credit_note": "_validate_invoice",
+        "bank_statement": "_validate_bank_statement",
+        "receipt": "_validate_receipt",
+        "expense_receipt": "_validate_receipt",
+        "payroll": "_validate_payroll",
+        "payslip": "_validate_payroll",
+        "payroll_record": "_validate_payroll",
+        "vat_certificate": "_validate_vat_certificate",
+        "vat_registration": "_validate_vat_certificate",
+        "contract": "_validate_contract",
+        "agreement": "_validate_contract",
+        "service_agreement": "_validate_contract",
+        "other": "_validate_generic",
+        # Uppercase (for compatibility with frontend/DB values)
+        "INVOICE": "_validate_invoice",
+        "SALES_INVOICE": "_validate_invoice",
+        "PURCHASE_INVOICE": "_validate_invoice",
+        "CREDIT_NOTE": "_validate_invoice",
+        "BANK_STATEMENT": "_validate_bank_statement",
+        "RECEIPT": "_validate_receipt",
+        "EXPENSE_RECEIPT": "_validate_receipt",
+        "PAYROLL": "_validate_payroll",
+        "PAYSLIP": "_validate_payroll",
+        "PAYROLL_RECORD": "_validate_payroll",
+        "VAT_CERTIFICATE": "_validate_vat_certificate",
+        "VAT_REGISTRATION": "_validate_vat_certificate",
+        "CONTRACT": "_validate_contract",
+        "AGREEMENT": "_validate_contract",
+        "SERVICE_AGREEMENT": "_validate_contract",
+        "OTHER": "_validate_generic",
+    }
 
-    def validate_document(self, document_id: int) -> list[ValidationResult]:
-        """Run all validation rules on a document.
+    def __init__(self, db: Session, ai_provider: AnthropicProvider | None = None):
+        self.db = db
+        self._ai_provider = ai_provider
+
+    @property
+    def ai_provider(self) -> AnthropicProvider:
+        """Lazy-load AI provider."""
+        if self._ai_provider is None:
+            self._ai_provider = AnthropicProvider()
+        return self._ai_provider
+
+    def validate_document(
+        self, document_id: int, include_ai_validation: bool = True
+    ) -> list[ValidationResult]:
+        """Run document-type-specific validation rules on a document.
+
+        Args:
+            document_id: ID of the document to validate
+            include_ai_validation: Whether to run AI anomaly detection
 
         Returns list of validation results.
         """
@@ -37,14 +96,34 @@ class ValidationService:
 
         results = []
 
-        # Run all validation rules
-        results.append(self._validate_required_fields(doc))
-        results.append(self._validate_vat_number_format(doc))
-        results.append(self._validate_date_in_period(doc))
-        results.append(self._validate_totals_match(doc))
-        results.append(self._validate_vat_rate(doc))
-        results.append(self._validate_duplicate(doc))
-        results.append(self._validate_currency(doc))
+        # Get document type and route to appropriate validator
+        if doc.document_type:
+            doc_type = doc.document_type.value
+        else:
+            doc_type = "other"
+            logger.warning(f"Document {document_id} has no document_type set, defaulting to 'other'")
+
+        # Look up validator - try both original and uppercase versions
+        validator_method_name = self.DOCUMENT_TYPE_VALIDATORS.get(doc_type)
+        if not validator_method_name:
+            validator_method_name = self.DOCUMENT_TYPE_VALIDATORS.get(doc_type.upper())
+        if not validator_method_name:
+            # Default to generic validation for unknown types
+            validator_method_name = "_validate_generic"
+            logger.warning(f"No validator found for document type '{doc_type}', using generic validation")
+
+        validator_method = getattr(self, validator_method_name, self._validate_generic)
+
+        logger.info(f"Validating document {document_id} (type: '{doc_type}') using {validator_method_name}")
+
+        # Run document-type-specific validation
+        type_specific_results = validator_method(doc)
+        results.extend(type_specific_results)
+
+        # Run AI anomaly detection if enabled and document has extracted data
+        if include_ai_validation and doc.extracted_data:
+            ai_results = self._validate_ai_anomaly(doc)
+            results.extend(ai_results)
 
         # Save all results
         for result in results:
@@ -52,8 +131,15 @@ class ValidationService:
 
         # Update document status based on results
         has_failures = any(r.status == ValidationStatus.FAILED for r in results)
+        has_warnings = any(r.status == ValidationStatus.WARNING for r in results)
+        used_generic = self._is_generic_validation(doc)
+
         if has_failures:
             doc.status = DocumentStatus.EXTRACTED  # Keep as extracted, not validated
+        elif used_generic or has_warnings:
+            # Generic validation or warnings = needs manual review, don't mark as validated
+            doc.status = DocumentStatus.EXTRACTED
+            logger.info(f"Document {doc.id} needs manual review (generic={used_generic}, warnings={has_warnings})")
         else:
             doc.status = DocumentStatus.VALIDATED
 
@@ -63,6 +149,1250 @@ class ValidationService:
             self.db.refresh(result)
 
         return results
+
+    # ========== GENERIC VALIDATION (for unknown document types) ==========
+    def _validate_generic(self, doc: Document) -> list[ValidationResult]:
+        """Generic validation for unknown document types.
+
+        IMPORTANT: Generic validation always returns WARNING or FAILED status
+        to ensure documents don't get marked as VALIDATED without proper review.
+        """
+        results = []
+
+        doc_type_str = doc.document_type.value if doc.document_type else 'not specified'
+
+        # Always return WARNING for generic validation - requires manual review
+        results.append(ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.REQUIRED_FIELDS,
+            status=ValidationStatus.WARNING,  # Never PASSED for generic
+            message=f"Document type '{doc_type_str}' requires manual review",
+            details="This document type does not have automated validation rules. Please review manually to ensure it meets requirements.",
+            severity="medium",
+            ai_reasoning={
+                "validator": "GenericValidator",
+                "check": "manual_review_required",
+                "document_type": doc_type_str,
+                "reason": "No specific validation rules for this document type",
+            },
+        ))
+
+        return results
+
+    def _is_generic_validation(self, doc: Document) -> bool:
+        """Check if document will use generic validation."""
+        if not doc.document_type:
+            return True
+        doc_type = doc.document_type.value
+        return (doc_type not in self.DOCUMENT_TYPE_VALIDATORS and
+                doc_type.upper() not in self.DOCUMENT_TYPE_VALIDATORS)
+
+    # ========== INVOICE VALIDATION ==========
+    def _validate_invoice(self, doc: Document) -> list[ValidationResult]:
+        """Validate invoice-specific rules."""
+        results = []
+
+        # Required fields for invoices
+        results.append(self._validate_invoice_required_fields(doc))
+        results.append(self._validate_vat_number_format(doc))
+        results.append(self._validate_date_in_period(doc))
+        results.append(self._validate_invoice_totals(doc))
+        results.append(self._validate_vat_rate(doc))
+        results.append(self._validate_invoice_duplicate(doc))
+        results.append(self._validate_currency(doc))
+
+        return results
+
+    def _validate_invoice_required_fields(self, doc: Document) -> ValidationResult:
+        """Validate required fields for invoices."""
+        required_fields = [
+            ("invoice_number", doc.invoice_number, "Invoice number is required for VAT records"),
+            ("invoice_date", doc.invoice_date, "Invoice date is required for VAT period allocation"),
+            ("supplier_name", doc.supplier_name, "Supplier name is required for audit trail"),
+            ("net_amount", doc.net_amount, "Net amount is required for VAT calculation"),
+            ("vat_amount", doc.vat_amount, "VAT amount is required for VAT return"),
+            ("gross_amount", doc.gross_amount, "Gross amount is required for reconciliation"),
+        ]
+
+        missing = [(name, reason) for name, value, reason in required_fields if value is None]
+
+        if missing:
+            missing_details = "; ".join([f"{name}: {reason}" for name, reason in missing])
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.REQUIRED_FIELDS,
+                status=ValidationStatus.FAILED,
+                message=f"Invoice missing {len(missing)} required field(s): {', '.join([m[0] for m in missing])}",
+                details=missing_details,
+                severity="high",
+                ai_reasoning={
+                    "validator": "InvoiceValidator",
+                    "check": "required_fields",
+                    "missing_fields": [{"field": m[0], "reason": m[1]} for m in missing],
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.REQUIRED_FIELDS,
+            status=ValidationStatus.PASSED,
+            message="All required invoice fields present",
+        )
+
+    def _validate_invoice_totals(self, doc: Document) -> ValidationResult:
+        """Validate invoice calculation: net + VAT = gross."""
+        if doc.net_amount is None or doc.vat_amount is None or doc.gross_amount is None:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.TOTALS_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="Missing amount fields for invoice calculation validation",
+            )
+
+        calculated_gross = doc.net_amount + doc.vat_amount
+        difference = abs(calculated_gross - doc.gross_amount)
+
+        if difference <= CALCULATION_TOLERANCE:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.TOTALS_MATCH,
+                status=ValidationStatus.PASSED,
+                message="Invoice calculation verified: Net + VAT = Gross",
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.TOTALS_MATCH,
+            status=ValidationStatus.FAILED,
+            message=f"Invoice calculation error: £{doc.net_amount} + £{doc.vat_amount} = £{calculated_gross}, but invoice shows £{doc.gross_amount}",
+            details=f"Difference of £{difference:.2f} detected. This may indicate a data entry error or OCR extraction issue.",
+            field_name="gross_amount",
+            expected_value=str(calculated_gross),
+            actual_value=str(doc.gross_amount),
+            severity="high",
+            ai_reasoning={
+                "validator": "InvoiceValidator",
+                "check": "totals_match",
+                "calculation": f"{doc.net_amount} + {doc.vat_amount} = {calculated_gross}",
+                "difference": float(difference),
+            },
+        )
+
+    def _validate_invoice_duplicate(self, doc: Document) -> ValidationResult:
+        """Check for duplicate invoices."""
+        if not doc.invoice_number:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DUPLICATE_DETECTION,
+                status=ValidationStatus.SKIPPED,
+                message="No invoice number for duplicate check",
+            )
+
+        stmt = select(Document).where(
+            Document.invoice_number == doc.invoice_number,
+            Document.id != doc.id,
+        )
+        duplicates = list(self.db.scalars(stmt).all())
+
+        if duplicates:
+            dup_info = [{"id": d.id, "filename": d.filename, "supplier": d.supplier_name} for d in duplicates]
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DUPLICATE_DETECTION,
+                status=ValidationStatus.WARNING,
+                message=f"Potential duplicate invoice: Invoice #{doc.invoice_number} already exists",
+                details=f"Found {len(duplicates)} other document(s) with the same invoice number. Review to avoid double-counting for VAT.",
+                severity="medium",
+                ai_reasoning={
+                    "validator": "InvoiceValidator",
+                    "check": "duplicate_detection",
+                    "duplicates": dup_info,
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.DUPLICATE_DETECTION,
+            status=ValidationStatus.PASSED,
+            message="No duplicate invoices found",
+        )
+
+    # ========== BANK STATEMENT VALIDATION ==========
+    def _validate_bank_statement(self, doc: Document) -> list[ValidationResult]:
+        """Validate bank statement-specific rules."""
+        results = []
+
+        results.append(self._validate_bank_statement_required_fields(doc))
+        results.append(self._validate_bank_statement_period(doc))
+        results.append(self._validate_bank_statement_balance(doc))
+        results.append(self._validate_bank_account_format(doc))
+
+        return results
+
+    def _validate_bank_statement_required_fields(self, doc: Document) -> ValidationResult:
+        """Validate required fields for bank statements."""
+        extracted = doc.extracted_data or {}
+
+        required_checks = [
+            ("account_number", extracted.get("account_number"), "Account number needed to identify bank account"),
+            ("statement_period", extracted.get("statement_period") or extracted.get("period_start"), "Statement period needed for VAT period matching"),
+            ("opening_balance", extracted.get("opening_balance"), "Opening balance needed for reconciliation"),
+            ("closing_balance", extracted.get("closing_balance"), "Closing balance needed for reconciliation"),
+        ]
+
+        missing = [(name, reason) for name, value, reason in required_checks if not value]
+
+        if missing:
+            missing_details = "; ".join([f"{name}: {reason}" for name, reason in missing])
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.REQUIRED_FIELDS,
+                status=ValidationStatus.FAILED,
+                message=f"Bank statement missing {len(missing)} required field(s): {', '.join([m[0] for m in missing])}",
+                details=missing_details,
+                severity="high",
+                ai_reasoning={
+                    "validator": "BankStatementValidator",
+                    "check": "required_fields",
+                    "missing_fields": [{"field": m[0], "reason": m[1]} for m in missing],
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.REQUIRED_FIELDS,
+            status=ValidationStatus.PASSED,
+            message="All required bank statement fields present",
+        )
+
+    def _validate_bank_statement_period(self, doc: Document) -> ValidationResult:
+        """Validate bank statement period matches VAT period."""
+        extracted = doc.extracted_data or {}
+        period_start = extracted.get("period_start")
+        period_end = extracted.get("period_end")
+
+        if not period_start or not period_end:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.WARNING,
+                message="Bank statement period dates not extracted",
+                details="Unable to verify if statement covers the correct VAT period.",
+                severity="medium",
+                ai_reasoning={
+                    "validator": "BankStatementValidator",
+                    "check": "period_coverage",
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.DATE_IN_PERIOD,
+            status=ValidationStatus.PASSED,
+            message=f"Bank statement covers period: {period_start} to {period_end}",
+        )
+
+    def _validate_bank_statement_balance(self, doc: Document) -> ValidationResult:
+        """Validate bank statement balance reconciliation."""
+        extracted = doc.extracted_data or {}
+        opening = extracted.get("opening_balance")
+        closing = extracted.get("closing_balance")
+        total_credits = extracted.get("total_credits")
+        total_debits = extracted.get("total_debits")
+
+        if not all([opening, closing]):
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.TOTALS_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="Balance fields not available for reconciliation check",
+            )
+
+        # If we have transaction totals, verify: opening + credits - debits = closing
+        if total_credits is not None and total_debits is not None:
+            try:
+                calc_closing = Decimal(str(opening)) + Decimal(str(total_credits)) - Decimal(str(total_debits))
+                actual_closing = Decimal(str(closing))
+                difference = abs(calc_closing - actual_closing)
+
+                if difference > CALCULATION_TOLERANCE:
+                    return ValidationResult(
+                        document_id=doc.id,
+                        rule_type=RuleType.TOTALS_MATCH,
+                        status=ValidationStatus.FAILED,
+                        message=f"Bank statement balance discrepancy: Expected closing £{calc_closing}, actual £{closing}",
+                        details=f"Opening (£{opening}) + Credits (£{total_credits}) - Debits (£{total_debits}) = £{calc_closing}, but statement shows £{closing}",
+                        expected_value=str(calc_closing),
+                        actual_value=str(closing),
+                        severity="high",
+                        ai_reasoning={
+                            "validator": "BankStatementValidator",
+                            "check": "balance_reconciliation",
+                            "calculation": {
+                                "opening": opening,
+                                "credits": total_credits,
+                                "debits": total_debits,
+                                "expected_closing": float(calc_closing),
+                                "actual_closing": float(actual_closing),
+                            },
+                        },
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.TOTALS_MATCH,
+            status=ValidationStatus.PASSED,
+            message="Bank statement balances verified",
+        )
+
+    def _validate_bank_account_format(self, doc: Document) -> ValidationResult:
+        """Validate UK bank account number format."""
+        extracted = doc.extracted_data or {}
+        account_number = extracted.get("account_number")
+        sort_code = extracted.get("sort_code")
+
+        issues = []
+
+        if account_number:
+            clean_account = re.sub(r'\D', '', str(account_number))
+            if len(clean_account) != 8:
+                issues.append(f"Account number '{account_number}' should be 8 digits (found {len(clean_account)})")
+
+        if sort_code:
+            clean_sort = re.sub(r'\D', '', str(sort_code))
+            if len(clean_sort) != 6:
+                issues.append(f"Sort code '{sort_code}' should be 6 digits (found {len(clean_sort)})")
+
+        if issues:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_NUMBER_FORMAT,  # Reusing for account format
+                status=ValidationStatus.WARNING,
+                message="Bank account format issues detected",
+                details="; ".join(issues),
+                severity="low",
+                ai_reasoning={
+                    "validator": "BankStatementValidator",
+                    "check": "account_format",
+                    "issues": issues,
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.VAT_NUMBER_FORMAT,
+            status=ValidationStatus.PASSED,
+            message="Bank account format valid",
+        )
+
+    # ========== RECEIPT VALIDATION ==========
+    def _validate_receipt(self, doc: Document) -> list[ValidationResult]:
+        """Validate receipt-specific rules."""
+        results = []
+
+        results.append(self._validate_receipt_required_fields(doc))
+        results.append(self._validate_receipt_date(doc))
+        results.append(self._validate_receipt_vat_requirements(doc))
+        results.append(self._validate_currency(doc))
+
+        return results
+
+    def _validate_receipt_required_fields(self, doc: Document) -> ValidationResult:
+        """Validate required fields for receipts."""
+        extracted = doc.extracted_data or {}
+
+        required_checks = [
+            ("vendor_name", extracted.get("vendor_name") or doc.supplier_name, "Vendor/merchant name needed for expense categorization"),
+            ("date", extracted.get("receipt_date") or doc.invoice_date, "Receipt date needed for VAT period allocation"),
+            ("total_amount", extracted.get("total_amount") or doc.gross_amount, "Total amount needed for expense tracking"),
+        ]
+
+        missing = [(name, reason) for name, value, reason in required_checks if not value]
+
+        if missing:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.REQUIRED_FIELDS,
+                status=ValidationStatus.FAILED,
+                message=f"Receipt missing {len(missing)} required field(s): {', '.join([m[0] for m in missing])}",
+                details="; ".join([f"{name}: {reason}" for name, reason in missing]),
+                severity="high",
+                ai_reasoning={
+                    "validator": "ReceiptValidator",
+                    "check": "required_fields",
+                    "missing_fields": [{"field": m[0], "reason": m[1]} for m in missing],
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.REQUIRED_FIELDS,
+            status=ValidationStatus.PASSED,
+            message="All required receipt fields present",
+        )
+
+    def _validate_receipt_date(self, doc: Document) -> ValidationResult:
+        """Validate receipt date."""
+        from datetime import datetime, timedelta
+
+        receipt_date = doc.invoice_date
+        extracted = doc.extracted_data or {}
+        if not receipt_date and extracted.get("receipt_date"):
+            try:
+                receipt_date = datetime.strptime(extracted["receipt_date"], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                pass
+
+        if not receipt_date:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.WARNING,
+                message="Receipt date not available",
+                severity="medium",
+            )
+
+        # Check if receipt is too old (> 4 years for VAT claims)
+        four_years_ago = (datetime.now() - timedelta(days=4*365)).date()
+        if receipt_date < four_years_ago:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.FAILED,
+                message=f"Receipt dated {receipt_date} is over 4 years old",
+                details="HMRC only allows VAT claims on expenses within 4 years. This receipt may not be eligible for VAT recovery.",
+                severity="high",
+                ai_reasoning={
+                    "validator": "ReceiptValidator",
+                    "check": "date_validity",
+                    "receipt_date": str(receipt_date),
+                    "cutoff_date": str(four_years_ago),
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.DATE_IN_PERIOD,
+            status=ValidationStatus.PASSED,
+            message="Receipt date within valid period",
+        )
+
+    def _validate_receipt_vat_requirements(self, doc: Document) -> ValidationResult:
+        """Validate VAT invoice requirements for receipts over £250."""
+        extracted = doc.extracted_data or {}
+        total = doc.gross_amount or extracted.get("total_amount")
+
+        if not total:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_RATE_VALID,
+                status=ValidationStatus.SKIPPED,
+                message="No total amount for VAT requirements check",
+            )
+
+        try:
+            total_decimal = Decimal(str(total))
+        except:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_RATE_VALID,
+                status=ValidationStatus.SKIPPED,
+                message="Invalid total amount format",
+            )
+
+        # For receipts over £250, full VAT invoice details are required
+        if total_decimal > Decimal("250"):
+            vat_requirements = [
+                ("supplier_vat_number", doc.supplier_vat_number or extracted.get("vat_number")),
+                ("supplier_address", extracted.get("vendor_address") or extracted.get("supplier_address")),
+            ]
+            missing = [name for name, value in vat_requirements if not value]
+
+            if missing:
+                return ValidationResult(
+                    document_id=doc.id,
+                    rule_type=RuleType.VAT_RATE_VALID,
+                    status=ValidationStatus.WARNING,
+                    message=f"Receipt over £250 missing VAT invoice requirements: {', '.join(missing)}",
+                    details="For purchases over £250, HMRC requires a full VAT invoice with supplier VAT number and address to reclaim VAT.",
+                    severity="medium",
+                    ai_reasoning={
+                        "validator": "ReceiptValidator",
+                        "check": "vat_invoice_requirements",
+                        "total": float(total_decimal),
+                        "threshold": 250,
+                        "missing": missing,
+                    },
+                )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.VAT_RATE_VALID,
+            status=ValidationStatus.PASSED,
+            message="Receipt meets VAT requirements",
+        )
+
+    # ========== PAYROLL VALIDATION ==========
+    def _validate_payroll(self, doc: Document) -> list[ValidationResult]:
+        """Validate payroll-specific rules."""
+        results = []
+
+        results.append(self._validate_payroll_required_fields(doc))
+        results.append(self._validate_payroll_ni_number(doc))
+        results.append(self._validate_payroll_tax_code(doc))
+        results.append(self._validate_payroll_calculations(doc))
+        results.append(self._validate_payroll_ni_contributions(doc))
+
+        return results
+
+    def _validate_payroll_required_fields(self, doc: Document) -> ValidationResult:
+        """Validate required fields for payroll documents."""
+        extracted = doc.extracted_data or {}
+
+        required_checks = [
+            ("employee_name", extracted.get("employee_name"), "Employee name is required for payroll records"),
+            ("pay_period", extracted.get("pay_period") or extracted.get("period"), "Pay period is required for HMRC RTI reporting"),
+            ("gross_pay", extracted.get("gross_pay") or extracted.get("gross_salary"), "Gross pay is required for tax calculations"),
+            ("net_pay", extracted.get("net_pay") or extracted.get("take_home_pay"), "Net pay is required for payment verification"),
+            ("paye_tax", extracted.get("paye_tax") or extracted.get("income_tax") or extracted.get("tax"), "PAYE tax deduction is required"),
+            ("national_insurance", extracted.get("national_insurance") or extracted.get("ni") or extracted.get("ni_employee"), "NI contribution is required"),
+        ]
+
+        missing = [(name, reason) for name, value, reason in required_checks if not value]
+
+        if missing:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.REQUIRED_FIELDS,
+                status=ValidationStatus.FAILED,
+                message=f"Payroll document missing {len(missing)} required field(s): {', '.join([m[0] for m in missing])}",
+                details="; ".join([f"{name}: {reason}" for name, reason in missing]),
+                severity="high",
+                ai_reasoning={
+                    "validator": "PayrollValidator",
+                    "check": "required_fields",
+                    "missing_fields": [{"field": m[0], "reason": m[1]} for m in missing],
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.REQUIRED_FIELDS,
+            status=ValidationStatus.PASSED,
+            message="All required payroll fields present",
+        )
+
+    def _validate_payroll_ni_number(self, doc: Document) -> ValidationResult:
+        """Validate National Insurance number format."""
+        import re
+        extracted = doc.extracted_data or {}
+        ni_number = extracted.get("ni_number") or extracted.get("national_insurance_number")
+
+        if not ni_number:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_NUMBER_FORMAT,  # Re-using format validation type
+                status=ValidationStatus.WARNING,
+                message="No National Insurance number found in payroll document",
+                details="NI number is required for HMRC reporting. Ensure it's included in payroll records.",
+                severity="medium",
+                ai_reasoning={
+                    "validator": "PayrollValidator",
+                    "check": "ni_number_presence",
+                },
+            )
+
+        # UK NI number format: 2 letters, 6 numbers, 1 letter (e.g., AB123456C)
+        ni_pattern = r"^[A-CEGHJ-PR-TW-Z]{2}\d{6}[A-D]$"
+        cleaned = str(ni_number).upper().replace(" ", "")
+
+        if not re.match(ni_pattern, cleaned):
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_NUMBER_FORMAT,
+                status=ValidationStatus.FAILED,
+                message=f"Invalid National Insurance number format: {ni_number}",
+                details="UK NI numbers follow the format: 2 letters, 6 digits, 1 letter (e.g., AB123456C). Certain letter combinations are invalid.",
+                field_name="ni_number",
+                actual_value=ni_number,
+                severity="high",
+                ai_reasoning={
+                    "validator": "PayrollValidator",
+                    "check": "ni_number_format",
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.VAT_NUMBER_FORMAT,
+            status=ValidationStatus.PASSED,
+            message="National Insurance number format valid",
+        )
+
+    def _validate_payroll_tax_code(self, doc: Document) -> ValidationResult:
+        """Validate tax code format."""
+        import re
+        extracted = doc.extracted_data or {}
+        tax_code = extracted.get("tax_code")
+
+        if not tax_code:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_RATE_VALID,  # Re-using for tax validation
+                status=ValidationStatus.WARNING,
+                message="No tax code found in payroll document",
+                details="Tax code should be displayed on payslips. Check if this is a complete payroll record.",
+                severity="low",
+            )
+
+        tax_code_str = str(tax_code).upper().strip()
+
+        # Common tax code patterns
+        valid_patterns = [
+            r"^\d{1,4}[LMNTX]$",  # Standard codes like 1257L
+            r"^K\d{1,4}$",  # K codes (negative allowance)
+            r"^S\d{1,4}[LMNTX]$",  # Scottish codes
+            r"^C\d{1,4}[LMNTX]$",  # Welsh codes
+            r"^BR$",  # Basic rate
+            r"^D[01]$",  # Higher/additional rate
+            r"^NT$",  # No tax
+            r"^0T$",  # No allowance
+        ]
+
+        is_valid_format = any(re.match(p, tax_code_str) for p in valid_patterns)
+
+        if not is_valid_format:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_RATE_VALID,
+                status=ValidationStatus.WARNING,
+                message=f"Unusual tax code format: {tax_code}",
+                details="Tax code format may be incorrect. Common formats: 1257L, BR, D0, S1257L (Scotland), etc.",
+                field_name="tax_code",
+                actual_value=tax_code,
+                severity="medium",
+                ai_reasoning={
+                    "validator": "PayrollValidator",
+                    "check": "tax_code_format",
+                },
+            )
+
+        # Check for emergency tax codes
+        if tax_code_str.endswith("W1") or tax_code_str.endswith("M1") or "X" in tax_code_str:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_RATE_VALID,
+                status=ValidationStatus.WARNING,
+                message=f"Emergency/week 1/month 1 tax code detected: {tax_code}",
+                details="Employee may be on emergency tax. Consider contacting HMRC to obtain the correct tax code.",
+                field_name="tax_code",
+                actual_value=tax_code,
+                severity="low",
+                ai_reasoning={
+                    "validator": "PayrollValidator",
+                    "check": "emergency_tax_code",
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.VAT_RATE_VALID,
+            status=ValidationStatus.PASSED,
+            message=f"Tax code {tax_code} format valid",
+        )
+
+    def _validate_payroll_calculations(self, doc: Document) -> ValidationResult:
+        """Validate net pay calculation: gross - deductions = net."""
+        extracted = doc.extracted_data or {}
+
+        gross = self._parse_amount(extracted.get("gross_pay") or extracted.get("gross_salary"))
+        net = self._parse_amount(extracted.get("net_pay") or extracted.get("take_home_pay"))
+        paye = self._parse_amount(extracted.get("paye_tax") or extracted.get("income_tax") or extracted.get("tax")) or Decimal("0")
+        ni = self._parse_amount(extracted.get("national_insurance") or extracted.get("ni") or extracted.get("ni_employee")) or Decimal("0")
+        pension = self._parse_amount(extracted.get("pension") or extracted.get("pension_employee")) or Decimal("0")
+        student_loan = self._parse_amount(extracted.get("student_loan")) or Decimal("0")
+        other_deductions = self._parse_amount(extracted.get("other_deductions")) or Decimal("0")
+
+        if gross is None or net is None:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.TOTALS_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="Missing gross or net pay for calculation validation",
+            )
+
+        total_deductions = paye + ni + pension + student_loan + other_deductions
+        expected_net = gross - total_deductions
+
+        # Allow small tolerance for rounding
+        tolerance = Decimal("0.05")
+        difference = abs(expected_net - net)
+
+        if difference > tolerance:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.TOTALS_MATCH,
+                status=ValidationStatus.FAILED,
+                message=f"Payroll calculation mismatch: expected net £{expected_net:.2f}, actual £{net:.2f}",
+                details=f"Gross £{gross} - Deductions £{total_deductions} should equal £{expected_net}, but shows £{net}. Difference: £{difference:.2f}",
+                field_name="net_pay",
+                expected_value=f"£{expected_net:.2f}",
+                actual_value=f"£{net:.2f}",
+                severity="high",
+                ai_reasoning={
+                    "validator": "PayrollValidator",
+                    "check": "net_pay_calculation",
+                    "calculation": {
+                        "gross": float(gross),
+                        "paye": float(paye),
+                        "ni": float(ni),
+                        "pension": float(pension),
+                        "student_loan": float(student_loan),
+                        "other_deductions": float(other_deductions),
+                        "total_deductions": float(total_deductions),
+                        "expected_net": float(expected_net),
+                        "actual_net": float(net),
+                        "difference": float(difference),
+                    },
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.TOTALS_MATCH,
+            status=ValidationStatus.PASSED,
+            message="Payroll calculation verified: Gross - Deductions = Net",
+        )
+
+    def _validate_payroll_ni_contributions(self, doc: Document) -> ValidationResult:
+        """Validate NI contributions are reasonable for earnings."""
+        extracted = doc.extracted_data or {}
+
+        gross = self._parse_amount(extracted.get("gross_pay") or extracted.get("gross_salary"))
+        ni = self._parse_amount(extracted.get("national_insurance") or extracted.get("ni") or extracted.get("ni_employee"))
+
+        if gross is None or ni is None:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_RATE_VALID,
+                status=ValidationStatus.SKIPPED,
+                message="Missing gross pay or NI for contribution validation",
+            )
+
+        # 2024/25 NI thresholds (monthly approximation)
+        # Primary threshold: £1,048/month - below this, 0% NI
+        # Upper earnings limit: £4,189/month
+        monthly_threshold = Decimal("1048")
+
+        if gross <= monthly_threshold:
+            # Should be 0 NI
+            if ni > Decimal("0.50"):
+                return ValidationResult(
+                    document_id=doc.id,
+                    rule_type=RuleType.VAT_RATE_VALID,
+                    status=ValidationStatus.WARNING,
+                    message=f"NI charged on earnings below threshold: £{ni:.2f} deducted from £{gross:.2f} gross",
+                    details=f"Earnings below £{monthly_threshold}/month should have zero or minimal NI. Check if this is correct.",
+                    field_name="national_insurance",
+                    expected_value="£0.00 (below threshold)",
+                    actual_value=f"£{ni:.2f}",
+                    severity="medium",
+                    ai_reasoning={
+                        "validator": "PayrollValidator",
+                        "check": "ni_threshold",
+                        "gross": float(gross),
+                        "ni": float(ni),
+                        "threshold": float(monthly_threshold),
+                    },
+                )
+        elif ni == Decimal("0") and gross > monthly_threshold:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_RATE_VALID,
+                status=ValidationStatus.WARNING,
+                message=f"No NI contributions on earnings of £{gross:.2f}",
+                details="Unless employee is exempt (e.g., over state pension age), NI should be deducted on earnings above threshold.",
+                field_name="national_insurance",
+                expected_value="NI contribution expected",
+                actual_value="£0.00",
+                severity="medium",
+                ai_reasoning={
+                    "validator": "PayrollValidator",
+                    "check": "ni_missing",
+                    "gross": float(gross),
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.VAT_RATE_VALID,
+            status=ValidationStatus.PASSED,
+            message="NI contributions appear reasonable for earnings level",
+        )
+
+    def _parse_amount(self, value: Any) -> Decimal | None:
+        """Parse amount value to Decimal."""
+        if value is None:
+            return None
+        try:
+            if isinstance(value, Decimal):
+                return value
+            if isinstance(value, (int, float)):
+                return Decimal(str(value))
+            if isinstance(value, str):
+                cleaned = value.replace("£", "").replace("$", "").replace(",", "").strip()
+                return Decimal(cleaned)
+            return Decimal(str(value))
+        except:
+            return None
+
+    # ========== VAT CERTIFICATE VALIDATION ==========
+    def _validate_vat_certificate(self, doc: Document) -> list[ValidationResult]:
+        """Validate VAT certificate-specific rules."""
+        results = []
+
+        results.append(self._validate_vat_cert_required_fields(doc))
+        results.append(self._validate_vat_cert_number(doc))
+        results.append(self._validate_vat_cert_date(doc))
+
+        return results
+
+    def _validate_vat_cert_required_fields(self, doc: Document) -> ValidationResult:
+        """Validate required fields for VAT certificates."""
+        extracted = doc.extracted_data or {}
+
+        required_checks = [
+            ("vat_number", extracted.get("vat_number") or doc.supplier_vat_number, "VAT registration number is the primary identifier"),
+            ("business_name", extracted.get("business_name") or doc.supplier_name, "Business name needed to verify registration"),
+            ("effective_date", extracted.get("effective_date") or extracted.get("registration_date"), "Effective date shows when VAT registration began"),
+        ]
+
+        missing = [(name, reason) for name, value, reason in required_checks if not value]
+
+        if missing:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.REQUIRED_FIELDS,
+                status=ValidationStatus.FAILED,
+                message=f"VAT certificate missing {len(missing)} required field(s): {', '.join([m[0] for m in missing])}",
+                details="; ".join([f"{name}: {reason}" for name, reason in missing]),
+                severity="high",
+                ai_reasoning={
+                    "validator": "VATCertificateValidator",
+                    "check": "required_fields",
+                    "missing_fields": [{"field": m[0], "reason": m[1]} for m in missing],
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.REQUIRED_FIELDS,
+            status=ValidationStatus.PASSED,
+            message="All required VAT certificate fields present",
+        )
+
+    def _validate_vat_cert_number(self, doc: Document) -> ValidationResult:
+        """Validate VAT number format on certificate."""
+        extracted = doc.extracted_data or {}
+        vat_number = extracted.get("vat_number") or doc.supplier_vat_number
+
+        if not vat_number:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_NUMBER_FORMAT,
+                status=ValidationStatus.FAILED,
+                message="VAT certificate has no VAT number",
+                severity="high",
+            )
+
+        # UK VAT number: GB followed by 9 or 12 digits
+        clean_vat = re.sub(r'\s', '', str(vat_number).upper())
+
+        if clean_vat.startswith("GB"):
+            digits = clean_vat[2:]
+        else:
+            digits = clean_vat
+
+        if not (len(digits) == 9 or len(digits) == 12) or not digits.isdigit():
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.VAT_NUMBER_FORMAT,
+                status=ValidationStatus.FAILED,
+                message=f"Invalid VAT number format: '{vat_number}'",
+                details="UK VAT numbers must be 'GB' followed by 9 or 12 digits. Verify this certificate with HMRC's online checker.",
+                expected_value="GB followed by 9 or 12 digits",
+                actual_value=vat_number,
+                severity="high",
+                ai_reasoning={
+                    "validator": "VATCertificateValidator",
+                    "check": "vat_number_format",
+                    "vat_number": vat_number,
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.VAT_NUMBER_FORMAT,
+            status=ValidationStatus.PASSED,
+            message=f"VAT number format valid: {vat_number}",
+        )
+
+    def _validate_vat_cert_date(self, doc: Document) -> ValidationResult:
+        """Validate VAT certificate effective date."""
+        from datetime import datetime
+
+        extracted = doc.extracted_data or {}
+        effective_date_str = extracted.get("effective_date") or extracted.get("registration_date")
+
+        if not effective_date_str:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.WARNING,
+                message="VAT certificate effective date not found",
+                severity="medium",
+            )
+
+        # Try to parse the date
+        effective_date = None
+        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"]:
+            try:
+                effective_date = datetime.strptime(str(effective_date_str), fmt)
+                break
+            except ValueError:
+                continue
+
+        if not effective_date:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.WARNING,
+                message=f"Could not parse effective date: {effective_date_str}",
+                severity="low",
+            )
+
+        # Check if in the future
+        if effective_date > datetime.now():
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.FAILED,
+                message=f"VAT certificate effective date is in the future: {effective_date_str}",
+                details="VAT registration effective dates should not be in the future. This may indicate an invalid or fraudulent certificate.",
+                severity="high",
+                ai_reasoning={
+                    "validator": "VATCertificateValidator",
+                    "check": "effective_date",
+                    "date": effective_date_str,
+                },
+            )
+
+        # Check if before UK VAT system (1973)
+        if effective_date.year < 1973:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.FAILED,
+                message=f"VAT certificate date {effective_date_str} is before UK VAT system began (1973)",
+                severity="high",
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.DATE_IN_PERIOD,
+            status=ValidationStatus.PASSED,
+            message=f"VAT certificate effective date valid: {effective_date_str}",
+        )
+
+    # ========== CONTRACT VALIDATION ==========
+    def _validate_contract(self, doc: Document) -> list[ValidationResult]:
+        """Validate contract-specific rules."""
+        results = []
+
+        results.append(self._validate_contract_required_fields(doc))
+        results.append(self._validate_contract_parties(doc))
+        results.append(self._validate_contract_dates(doc))
+        results.append(self._validate_contract_vat_treatment(doc))
+
+        return results
+
+    def _validate_contract_required_fields(self, doc: Document) -> ValidationResult:
+        """Validate required fields for contracts."""
+        extracted = doc.extracted_data or {}
+
+        required_checks = [
+            ("party_1", extracted.get("party_1_name") or extracted.get("party_1"), "First party name needed to identify contractual relationship"),
+            ("party_2", extracted.get("party_2_name") or extracted.get("party_2"), "Second party name needed to identify contractual relationship"),
+            ("contract_date", extracted.get("contract_date") or extracted.get("effective_date"), "Contract date needed for determining VAT liability"),
+        ]
+
+        missing = [(name, reason) for name, value, reason in required_checks if not value]
+
+        if missing:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.REQUIRED_FIELDS,
+                status=ValidationStatus.FAILED,
+                message=f"Contract missing {len(missing)} required field(s): {', '.join([m[0] for m in missing])}",
+                details="; ".join([f"{name}: {reason}" for name, reason in missing]),
+                severity="high",
+                ai_reasoning={
+                    "validator": "ContractValidator",
+                    "check": "required_fields",
+                    "missing_fields": [{"field": m[0], "reason": m[1]} for m in missing],
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.REQUIRED_FIELDS,
+            status=ValidationStatus.PASSED,
+            message="All required contract fields present",
+        )
+
+    def _validate_contract_parties(self, doc: Document) -> ValidationResult:
+        """Validate contract parties are distinct."""
+        extracted = doc.extracted_data or {}
+        party_1 = extracted.get("party_1_name") or extracted.get("party_1") or ""
+        party_2 = extracted.get("party_2_name") or extracted.get("party_2") or ""
+
+        if party_1 and party_2:
+            if party_1.lower().strip() == party_2.lower().strip():
+                return ValidationResult(
+                    document_id=doc.id,
+                    rule_type=RuleType.DUPLICATE_DETECTION,
+                    status=ValidationStatus.FAILED,
+                    message="Contract parties appear to be the same entity",
+                    details=f"Both parties are listed as '{party_1}'. A valid contract requires two distinct parties.",
+                    severity="high",
+                    ai_reasoning={
+                        "validator": "ContractValidator",
+                        "check": "party_distinction",
+                        "party_1": party_1,
+                        "party_2": party_2,
+                    },
+                )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.DUPLICATE_DETECTION,
+            status=ValidationStatus.PASSED,
+            message="Contract parties are distinct",
+        )
+
+    def _validate_contract_dates(self, doc: Document) -> ValidationResult:
+        """Validate contract dates are logical."""
+        from datetime import datetime
+
+        extracted = doc.extracted_data or {}
+        start_date_str = extracted.get("start_date")
+        end_date_str = extracted.get("end_date")
+
+        if not start_date_str or not end_date_str:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.SKIPPED,
+                message="Contract start/end dates not available",
+            )
+
+        # Try to parse dates
+        start_date = end_date = None
+        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"]:
+            try:
+                if not start_date:
+                    start_date = datetime.strptime(str(start_date_str), fmt)
+                if not end_date:
+                    end_date = datetime.strptime(str(end_date_str), fmt)
+            except ValueError:
+                continue
+
+        if start_date and end_date and end_date < start_date:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.DATE_IN_PERIOD,
+                status=ValidationStatus.FAILED,
+                message=f"Contract end date ({end_date_str}) is before start date ({start_date_str})",
+                details="Contract period is invalid. End date must be after start date.",
+                expected_value=f"End date after {start_date_str}",
+                actual_value=end_date_str,
+                severity="high",
+                ai_reasoning={
+                    "validator": "ContractValidator",
+                    "check": "date_logic",
+                    "start_date": start_date_str,
+                    "end_date": end_date_str,
+                },
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.DATE_IN_PERIOD,
+            status=ValidationStatus.PASSED,
+            message="Contract dates are valid",
+        )
+
+    def _validate_contract_vat_treatment(self, doc: Document) -> ValidationResult:
+        """Check if contract specifies VAT treatment."""
+        extracted = doc.extracted_data or {}
+        contract_value = extracted.get("contract_value")
+        vat_inclusive = extracted.get("vat_inclusive")
+        vat_mentioned = extracted.get("vat_rate") or extracted.get("vat_amount")
+
+        # Only flag if contract has significant value
+        if contract_value:
+            try:
+                value = Decimal(str(contract_value).replace("£", "").replace(",", ""))
+                if value > Decimal("1000") and vat_inclusive is None and not vat_mentioned:
+                    return ValidationResult(
+                        document_id=doc.id,
+                        rule_type=RuleType.VAT_RATE_VALID,
+                        status=ValidationStatus.WARNING,
+                        message=f"Contract value £{value:,.2f} does not specify VAT treatment",
+                        details="For VAT compliance, contracts should clearly state whether prices include or exclude VAT. This affects VAT point calculations.",
+                        severity="medium",
+                        ai_reasoning={
+                            "validator": "ContractValidator",
+                            "check": "vat_treatment",
+                            "contract_value": float(value),
+                        },
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.VAT_RATE_VALID,
+            status=ValidationStatus.PASSED,
+            message="Contract VAT treatment check complete",
+        )
+
+    def _validate_ai_anomaly(self, doc: Document) -> list[ValidationResult]:
+        """Run AI anomaly detection using specialized document agents.
+
+        Uses the AgentRegistry to select the appropriate specialized agent
+        based on document type. Each agent has domain-specific knowledge
+        for better verification accuracy.
+
+        Returns a list of ValidationResult objects for each anomaly detected.
+        """
+        if not doc.extracted_data:
+            return [
+                ValidationResult(
+                    document_id=doc.id,
+                    rule_type=RuleType.AI_ANOMALY,
+                    status=ValidationStatus.SKIPPED,
+                    message="No extracted data available for AI validation",
+                )
+            ]
+
+        try:
+            # Get document type
+            document_type = doc.document_type.value if doc.document_type else "INVOICE"
+
+            # Create agent registry with AI provider
+            registry = AgentRegistry(self.ai_provider)
+
+            # Log which agent is being used
+            agent = registry.get_agent(document_type)
+            logger.info(
+                f"Using {agent.__class__.__name__} for document {doc.id} (type: {document_type})"
+            )
+
+            # Run async verification in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                verification_result = loop.run_until_complete(
+                    registry.verify_document(document_type, doc.extracted_data)
+                )
+            finally:
+                loop.close()
+
+            results = []
+
+            # Convert agent result to ValidationResult objects
+            if verification_result.is_valid and not verification_result.anomalies:
+                # No anomalies found - document passes AI check
+                return [
+                    ValidationResult(
+                        document_id=doc.id,
+                        rule_type=RuleType.AI_ANOMALY,
+                        status=ValidationStatus.PASSED,
+                        message="No anomalies detected",
+                        details=verification_result.summary,
+                        confidence=Decimal(str(verification_result.confidence_score)),
+                        ai_reasoning={
+                            "is_valid": verification_result.is_valid,
+                            "summary": verification_result.summary,
+                            "anomalies": [],
+                            "confidence_score": verification_result.confidence_score,
+                            "agent_type": agent.__class__.__name__,
+                            "document_type": verification_result.document_type,
+                        },
+                    )
+                ]
+
+            # Create a validation result for each anomaly
+            for anomaly in verification_result.anomalies:
+                # Map agent severity to validation status
+                if anomaly.severity == AgentSeverity.HIGH:
+                    status = ValidationStatus.FAILED
+                elif anomaly.severity == AgentSeverity.MEDIUM:
+                    status = ValidationStatus.WARNING
+                else:
+                    status = ValidationStatus.WARNING
+
+                results.append(
+                    ValidationResult(
+                        document_id=doc.id,
+                        rule_type=RuleType.AI_ANOMALY,
+                        status=status,
+                        message=anomaly.issue,
+                        details=anomaly.suggestion,
+                        field_name=anomaly.field,
+                        expected_value=anomaly.expected_value,
+                        actual_value=anomaly.actual_value,
+                        severity=anomaly.severity.value,
+                        confidence=Decimal(str(verification_result.confidence_score)),
+                        ai_reasoning={
+                            "anomaly": anomaly.to_dict(),
+                            "summary": verification_result.summary,
+                            "confidence_score": verification_result.confidence_score,
+                            "is_valid": verification_result.is_valid,
+                            "agent_type": agent.__class__.__name__,
+                            "document_type": verification_result.document_type,
+                        },
+                    )
+                )
+
+            return results if results else [
+                ValidationResult(
+                    document_id=doc.id,
+                    rule_type=RuleType.AI_ANOMALY,
+                    status=ValidationStatus.PASSED,
+                    message="AI validation completed with no significant issues",
+                    confidence=Decimal(str(verification_result.confidence_score)),
+                    ai_reasoning={
+                        "agent_type": agent.__class__.__name__,
+                        "document_type": verification_result.document_type,
+                    },
+                )
+            ]
+
+        except Exception as e:
+            logger.error(f"AI anomaly detection failed for document {doc.id}: {e}")
+            return [
+                ValidationResult(
+                    document_id=doc.id,
+                    rule_type=RuleType.AI_ANOMALY,
+                    status=ValidationStatus.SKIPPED,
+                    message=f"AI validation failed: {str(e)}",
+                    details="Manual review recommended",
+                )
+            ]
 
     def _clear_results(self, document_id: int) -> None:
         """Clear existing validation results for a document."""

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "./components/Sidebar";
 import { TopHeader } from "./components/TopHeader";
 import { ClientTable } from "./components/ClientTable";
@@ -8,6 +9,7 @@ import type { ClientRow } from "./components/ClientTable";
 import { DetailPanel } from "./components/DetailPanel";
 import { QuickMetrics } from "./components/QuickMetrics";
 import type { DashboardMetrics } from "./components/QuickMetrics";
+import { FlaggedDocuments } from "./components/FlaggedDocuments";
 import { AIChat } from "./AIChat";
 import { SparkleIcon, ChevronRightIcon } from "./components/icons/AccountantIcons";
 import "./styles/dashboard.css";
@@ -18,11 +20,22 @@ interface AccountantDashboardClientProps {
 }
 
 export function AccountantDashboardClient({ clients, metrics }: AccountantDashboardClientProps) {
+    const router = useRouter();
     const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
     const [showDetailPanel, setShowDetailPanel] = useState(false);
     const [showAIChat, setShowAIChat] = useState(false);
     const [activeNav, setActiveNav] = useState("dashboard");
     const [searchQuery, setSearchQuery] = useState("");
+
+    // Refresh dashboard data from server
+    const refreshDashboard = useCallback(() => {
+        router.refresh();
+    }, [router]);
+
+    // Calculate flagged count (clients with pending reviews)
+    const flaggedClientsCount = useMemo(() => {
+        return clients.filter((c) => c.hasPendingReviews).length;
+    }, [clients]);
 
     // Filter clients based on search
     const filteredClients = useMemo(() => {
@@ -35,6 +48,33 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                 client.entityType.toLowerCase().includes(query)
         );
     }, [clients, searchQuery]);
+
+    // Get page title based on active nav
+    const getPageTitle = () => {
+        switch (activeNav) {
+            case "flagged":
+                return "Flagged Documents";
+            case "clients":
+                return "All Clients";
+            case "vat-returns":
+                return "VAT Returns";
+            default:
+                return "VAT Compliance Dashboard";
+        }
+    };
+
+    const getPageSubtitle = () => {
+        switch (activeNav) {
+            case "flagged":
+                return "Review AI-flagged documents requiring attention";
+            case "clients":
+                return "Manage your client portfolio";
+            case "vat-returns":
+                return "Track VAT return deadlines";
+            default:
+                return "Track client documents and VAT returns";
+        }
+    };
 
     const handleRowClick = (client: ClientRow) => {
         setSelectedClient(client);
@@ -65,6 +105,7 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                 activeItem={activeNav}
                 clientCount={metrics.totalClients}
                 vatDueCount={metrics.vatReturnsDue}
+                flaggedCount={flaggedClientsCount}
                 onNavigate={(itemId) => {
                     setActiveNav(itemId);
                     if (itemId === "ai-assistant") {
@@ -77,30 +118,64 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* Top Header */}
                 <TopHeader
-                    title="VAT Compliance Dashboard"
-                    subtitle="Track client documents and VAT returns"
+                    title={getPageTitle()}
+                    subtitle={getPageSubtitle()}
                     onSearch={setSearchQuery}
                     onAddNew={handleAddNewClient}
                 />
 
                 {/* Scrollable Content Area */}
                 <main className="flex-1 overflow-auto p-6 custom-scrollbar">
-                    {/* Quick Metrics */}
-                    <div className="mb-6">
-                        <QuickMetrics
-                            metrics={metrics}
-                            onMetricClick={(metricId) => console.log("Metric clicked:", metricId)}
-                        />
-                    </div>
+                    {/* Dashboard View */}
+                    {activeNav === "dashboard" && (
+                        <>
+                            {/* Quick Metrics */}
+                            <div className="mb-6">
+                                <QuickMetrics
+                                    metrics={metrics}
+                                    onMetricClick={(metricId) => {
+                                        if (metricId === "flagged-documents") {
+                                            setActiveNav("flagged");
+                                        }
+                                    }}
+                                />
+                            </div>
 
-                    {/* Client Table */}
-                    <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
-                        <ClientTable
-                            data={filteredClients}
-                            onRowClick={handleRowClick}
-                            selectedId={selectedClient?.id}
-                        />
-                    </div>
+                            {/* Client Table */}
+                            <div className="animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+                                <ClientTable
+                                    data={filteredClients}
+                                    onRowClick={handleRowClick}
+                                    selectedId={selectedClient?.id}
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    {/* Flagged Documents View */}
+                    {activeNav === "flagged" && (
+                        <div className="animate-fade-in-up">
+                            <FlaggedDocuments onRefresh={refreshDashboard} />
+                        </div>
+                    )}
+
+                    {/* Clients View */}
+                    {activeNav === "clients" && (
+                        <div className="animate-fade-in-up">
+                            <ClientTable
+                                data={filteredClients}
+                                onRowClick={handleRowClick}
+                                selectedId={selectedClient?.id}
+                            />
+                        </div>
+                    )}
+
+                    {/* VAT Returns View - placeholder */}
+                    {activeNav === "vat-returns" && (
+                        <div className="animate-fade-in-up bg-white border border-[#DFE1E6] rounded p-8 text-center">
+                            <p className="text-[#5E6C84]">VAT Returns view coming soon</p>
+                        </div>
+                    )}
                 </main>
             </div>
 
@@ -112,6 +187,7 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                     onClose={handleCloseDetail}
                     onSendReminder={handleSendReminder}
                     onViewOnboarding={handleViewOnboarding}
+                    onValidationComplete={refreshDashboard}
                 />
             )}
 

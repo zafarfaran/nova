@@ -5,10 +5,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // GET - Fetch documents and their validation results for a client from Python backend
 export async function GET(
     request: NextRequest,
-    { params }: { params: { clientId: string } }
+    { params }: { params: Promise<{ clientId: string }> }
 ) {
     try {
-        const clientId = params.clientId;
+        const { clientId } = await params;
 
         if (!clientId) {
             return NextResponse.json(
@@ -94,13 +94,21 @@ async function formatDocumentsResponse(documents: any[]) {
                     validationResults = data.results || data.validation_results || data || [];
                 }
 
+                // Determine actual status - documents marked as VALIDATED but without
+                // validation results should be treated as EXTRACTED (needs validation)
+                let actualStatus = (doc.status || "pending").toLowerCase();
+                const hasValidationResults = Array.isArray(validationResults) && validationResults.length > 0;
+                if (actualStatus === "validated" && !hasValidationResults) {
+                    actualStatus = "extracted"; // Needs validation - no results yet
+                }
+
                 return {
                     id: doc.id?.toString() || doc._id?.toString(),
                     filename: doc.filename || doc.file_name || doc.name || "Unknown",
                     documentType: doc.document_type || doc.documentType || doc.type || "OTHER",
-                    status: (doc.status || "pending").toLowerCase(),
+                    status: actualStatus,
                     uploadedAt: doc.created_at || doc.createdAt || doc.uploaded_at || new Date(),
-                    validationResults: Array.isArray(validationResults) ? validationResults.map((r: any) => ({
+                    validationResults: hasValidationResults ? validationResults.map((r: any) => ({
                         id: r.id?.toString() || Math.random().toString(),
                         ruleType: r.rule_type || r.ruleType,
                         status: (r.status || "pending").toLowerCase(),

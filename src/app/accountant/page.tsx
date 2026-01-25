@@ -5,12 +5,27 @@ import type { DashboardMetrics } from "./components/QuickMetrics";
 
 // Server component that fetches data from the clients table
 export default async function AccountantDashboard() {
-    // Fetch all clients with their VAT periods, bank connections, and checklist items
+    // Fetch all clients with their VAT periods, bank connections, checklist items, and validation status
     const clients = await db.client.findMany({
         include: {
             vatPeriods: {
                 include: {
-                    evidenceItems: true,
+                    evidenceItems: {
+                        include: {
+                            documents: {
+                                include: {
+                                    validationResults: {
+                                        where: {
+                                            OR: [
+                                                { status: "FAILED" },
+                                                { status: "WARNING" },
+                                            ],
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
                 },
                 orderBy: { periodEnd: "desc" },
                 take: 1, // Get the most recent VAT period
@@ -41,12 +56,37 @@ export default async function AccountantDashboard() {
             }
         }
 
+        // Calculate validation status from documents
+        let failedValidationCount = 0;
+        let pendingReviewCount = 0;
+
+        if (latestPeriod) {
+            for (const evidenceItem of latestPeriod.evidenceItems) {
+                for (const doc of evidenceItem.documents) {
+                    for (const result of doc.validationResults) {
+                        // Count failed/warning validations
+                        if (result.status === "FAILED" || result.status === "WARNING") {
+                            failedValidationCount++;
+                            // Count those pending review (no review action taken yet)
+                            if (!result.reviewAction) {
+                                pendingReviewCount++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        const hasFailedValidations = failedValidationCount > 0;
+        const hasPendingReviews = pendingReviewCount > 0;
+
         // Determine status based on document completion
         let status: "needs_attention" | "in_progress" | "complete" = "needs_attention";
         if (documentsRequired > 0) {
             const completionRate = documentsUploaded / documentsRequired;
             if (completionRate >= 1) {
-                status = "complete";
+                // If all docs uploaded but has validation issues, mark as needs_attention
+                status = hasPendingReviews ? "needs_attention" : "complete";
             } else if (completionRate > 0) {
                 status = "in_progress";
             }
@@ -72,6 +112,9 @@ export default async function AccountantDashboard() {
             hasBankConnection: client.bankConnections.length > 0,
             status,
             updatedAt: client.updatedAt,
+            hasFailedValidations,
+            hasPendingReviews,
+            failedValidationCount,
         };
     });
 
@@ -89,6 +132,13 @@ export default async function AccountantDashboard() {
     }).length;
     const clientsNeedingAttention = clientRows.filter((c) => c.status === "needs_attention").length;
 
+    // Calculate flagged documents count
+    const flaggedDocuments = clientRows.reduce(
+        (sum, c) => sum + (c.failedValidationCount || 0),
+        0
+    );
+    const clientsWithFlags = clientRows.filter((c) => c.hasPendingReviews).length;
+
     const metrics: DashboardMetrics = {
         totalClients,
         documentsPending,
@@ -97,6 +147,8 @@ export default async function AccountantDashboard() {
         vatSubtitle: "Due within 30 days",
         bankConnections: clientsNeedingAttention,
         bankSubtitle: "Clients need attention",
+        flaggedDocuments,
+        flaggedSubtitle: clientsWithFlags > 0 ? `From ${clientsWithFlags} clients` : "All clear",
     };
 
     return <AccountantDashboardClient clients={clientRows} metrics={metrics} />;

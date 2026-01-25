@@ -24,6 +24,7 @@ interface DetailPanelProps {
     checklistItems?: ChecklistItemData[];
     onSendReminder?: (clientId: string) => void;
     onViewOnboarding?: (clientId: string) => void;
+    onValidationComplete?: () => void;
 }
 
 // Entity type labels
@@ -128,6 +129,7 @@ export function DetailPanel({
     checklistItems = [],
     onSendReminder,
     onViewOnboarding,
+    onValidationComplete,
 }: DetailPanelProps) {
     const formatDate = (date: Date) => {
         return new Date(date).toLocaleDateString("en-GB", {
@@ -186,6 +188,7 @@ export function DetailPanel({
                                 <ClientFlowDiagram
                                     currentStage={getClientStage(client)}
                                     variant="vertical"
+                                    failedStages={client.hasFailedValidations ? ["verification"] : []}
                                 />
                             </div>
 
@@ -325,7 +328,10 @@ export function DetailPanel({
 
                             {/* Document Verification */}
                             <div className="mb-5 p-4 bg-[#FAFBFC] rounded border border-[#DFE1E6]">
-                                <DocumentVerification clientId={client.id} />
+                                <DocumentVerification
+                                    clientId={client.id}
+                                    onValidationComplete={onValidationComplete}
+                                />
                             </div>
 
                             {/* Last Updated */}

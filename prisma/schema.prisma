@@ -110,6 +110,12 @@ model ValidationResult {
   fieldName     String?          @map("field_name") @db.VarChar(100)
   expectedValue String?          @map("expected_value") @db.VarChar(500)
   actualValue   String?          @map("actual_value") @db.VarChar(500)
+  severity      String?          @db.VarChar(20)
+  confidence    Decimal?         @db.Decimal(3, 2)
+  aiReasoning   Json?            @map("ai_reasoning") @db.Json
+  reviewedAt    DateTime?        @map("reviewed_at") @db.Timestamptz(6)
+  reviewedBy    String?          @map("reviewed_by") @db.VarChar(255)
+  reviewAction  String?          @map("review_action") @db.VarChar(50)
   createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   document      Document         @relation(fields: [documentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -341,6 +347,7 @@ enum documenttype {
   IMPORT_DECLARATION
   EXPORT_DECLARATION
   VAT_CERTIFICATE
+  PAYROLL
   OTHER
 }
 

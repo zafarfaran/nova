@@ -13,13 +13,17 @@ from app.storage.s3 import S3Storage
 logger = logging.getLogger(__name__)
 
 
-async def process_document(document_id: int) -> None:
+async def process_document(document_id: int, force: bool = False) -> None:
     """Process a document: download, extract data, and update record.
 
     This task:
     1. Downloads the document from S3
     2. Sends it to the AI provider for extraction
     3. Updates the document record with extracted data
+
+    Args:
+        document_id: ID of the document to process
+        force: If True, re-process even if already extracted. Defaults to False.
     """
     db = SessionLocal()
     try:
@@ -27,6 +31,14 @@ async def process_document(document_id: int) -> None:
         doc = db.get(Document, document_id)
         if not doc:
             logger.error(f"Document {document_id} not found")
+            return
+
+        # Skip if already extracted or validated (unless forced)
+        if not force and doc.status in [DocumentStatus.EXTRACTED, DocumentStatus.VALIDATED]:
+            logger.info(
+                f"Document {document_id} already extracted (status: {doc.status}). "
+                "Skipping extraction. Use force=True to re-process."
+            )
             return
 
         # Update status to processing

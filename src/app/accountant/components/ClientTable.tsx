@@ -18,6 +18,10 @@ export interface ClientRow {
     hasBankConnection: boolean;
     status: "needs_attention" | "in_progress" | "complete";
     updatedAt: Date;
+    // Validation status fields
+    hasFailedValidations?: boolean;
+    hasPendingReviews?: boolean;
+    failedValidationCount?: number;
 }
 
 interface ClientTableProps {
@@ -244,7 +248,10 @@ export function ClientTable({ data, onRowClick, selectedId }: ClientTableProps) 
 
                                             {/* Stage */}
                                             <div className="px-4 py-3 flex items-center">
-                                                <ClientFlowIndicator currentStage={getClientStage(client)} />
+                                                <ClientFlowIndicator
+                                                    currentStage={getClientStage(client)}
+                                                    hasFailedValidations={client.hasFailedValidations}
+                                                />
                                             </div>
 
                                             {/* Documents */}

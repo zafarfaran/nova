@@ -203,14 +203,26 @@ def process_document_endpoint(
     doc_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    force: bool = False,
 ) -> DocumentResponse:
-    """Manually trigger AI processing for a document."""
+    """Manually trigger AI processing for a document.
+
+    Args:
+        doc_id: ID of the document to process
+        force: If True, re-process even if already extracted. Defaults to False.
+    """
+    from app.models.document import DocumentStatus
+
     service = DocumentService(db)
     doc = service.get(doc_id)
     if not doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
         )
+
+    # Skip if already extracted unless forced
+    if not force and doc.status in [DocumentStatus.EXTRACTED, DocumentStatus.VALIDATED]:
+        return DocumentResponse.model_validate(doc)
 
     # Queue for processing
     background_tasks.add_task(run_process_document, doc_id)

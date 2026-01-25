@@ -309,7 +309,7 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
 - Type: ${document.documentType || "Not specified"}
 - Status: ${document.status || "Pending"}
 - Uploaded: ${document.createdAt ? new Date(document.createdAt).toLocaleDateString() : "Unknown"}
-- File URL: ${document.fileUrl || "Not available"}`;
+- File URL: ${document.s3Key || "Not available"}`;
 
                 if (client) {
                     result += `\n\nClient Information:

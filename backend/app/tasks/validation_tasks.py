@@ -60,3 +60,75 @@ def validate_period_documents(period_id: int) -> int:
         return len(documents)
     finally:
         db.close()
+
+
+def validate_client_documents(client_id: int) -> dict:
+    """Validate all extracted documents for a client.
+
+    Runs specialized AI validation on all documents across all VAT periods.
+    Uses document-specific AI agents (Invoice, Bank Statement, Receipt, etc.)
+    for better accuracy.
+
+    Args:
+        client_id: ID of the client
+
+    Returns:
+        dict with validation statistics
+    """
+    from app.models.vat_period import VATPeriod
+
+    db = SessionLocal()
+    try:
+        # Get all extracted documents for all periods belonging to this client
+        stmt = (
+            select(Document)
+            .join(EvidenceItem)
+            .join(VATPeriod)
+            .where(
+                VATPeriod.client_id == client_id,
+                Document.status.in_([DocumentStatus.EXTRACTED, DocumentStatus.VALIDATED]),
+            )
+        )
+        documents = list(db.scalars(stmt).all())
+
+        logger.info(
+            f"Starting validation for client {client_id}: found {len(documents)} documents"
+        )
+
+        service = ValidationService(db)
+        validated_count = 0
+        failed_count = 0
+        total_issues = 0
+
+        for doc in documents:
+            try:
+                logger.info(
+                    f"Validating document {doc.id} ({doc.filename}) "
+                    f"- type: {doc.document_type}"
+                )
+                results = service.validate_document(doc.id, include_ai_validation=True)
+
+                validated_count += 1
+                issues = len([r for r in results if r.status.value in ['failed', 'warning']])
+                total_issues += issues
+
+                logger.info(
+                    f"Document {doc.id} validation complete: {issues} issues found"
+                )
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Failed to validate document {doc.id}: {e}")
+
+        summary = {
+            "client_id": client_id,
+            "total_documents": len(documents),
+            "validated": validated_count,
+            "failed_to_validate": failed_count,
+            "total_issues_found": total_issues,
+        }
+
+        logger.info(f"Client {client_id} validation complete: {summary}")
+
+        return summary
+    finally:
+        db.close()

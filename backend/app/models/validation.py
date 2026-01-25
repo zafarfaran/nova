@@ -1,9 +1,12 @@
 """Validation model for document validation results."""
 
 import enum
-from typing import TYPE_CHECKING
+from datetime import datetime
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Enum, ForeignKey, String
+from sqlalchemy import Enum, ForeignKey, Numeric, String
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -53,6 +56,16 @@ class ValidationResult(Base, TimestampMixin):
     field_name: Mapped[str | None] = mapped_column(String(100))
     expected_value: Mapped[str | None] = mapped_column(String(500))
     actual_value: Mapped[str | None] = mapped_column(String(500))
+
+    # AI anomaly detection fields
+    severity: Mapped[str | None] = mapped_column(String(20))  # high, medium, low
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))  # 0.00 - 1.00
+    ai_reasoning: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    # Review fields for human review workflow
+    reviewed_at: Mapped[datetime | None] = mapped_column()
+    reviewed_by: Mapped[str | None] = mapped_column(String(255))
+    review_action: Mapped[str | None] = mapped_column(String(50))  # approved, rejected, request_info
 
     # Relationships
     document: Mapped["Document"] = relationship(

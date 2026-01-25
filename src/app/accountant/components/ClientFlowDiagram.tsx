@@ -95,6 +95,7 @@ const stages: StageConfig[] = [
 interface ClientFlowDiagramProps {
     currentStage: FlowStage;
     completedStages?: FlowStage[];
+    failedStages?: FlowStage[];
     onStageClick?: (stage: FlowStage) => void;
     variant?: "horizontal" | "vertical";
 }
@@ -102,14 +103,21 @@ interface ClientFlowDiagramProps {
 export function ClientFlowDiagram({
     currentStage,
     completedStages = [],
+    failedStages = [],
     onStageClick,
     variant = "horizontal",
 }: ClientFlowDiagramProps) {
     const currentIndex = stages.findIndex((s) => s.id === currentStage);
 
     const getStageStatus = (stage: StageConfig, index: number) => {
+        // Check if this stage has failed validation
+        if (failedStages.includes(stage.id)) return "failed";
         if (completedStages.includes(stage.id)) return "completed";
-        if (stage.id === currentStage) return "current";
+        if (stage.id === currentStage) {
+            // If current stage is in failed stages, show as failed
+            if (failedStages.includes(stage.id)) return "failed";
+            return "current";
+        }
         if (index < currentIndex) return "completed";
         return "upcoming";
     };
@@ -131,6 +139,14 @@ export function ClientFlowDiagram({
                     text: "#0052CC",
                     icon: "#0052CC",
                     line: "#DFE1E6",
+                };
+            case "failed":
+                return {
+                    bg: "#FFEBE6",
+                    border: "#DE350B",
+                    text: "#BF2600",
+                    icon: "#DE350B",
+                    line: "#DE350B",
                 };
             default:
                 return {
@@ -167,6 +183,10 @@ export function ClientFlowDiagram({
                                     {status === "completed" ? (
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    ) : status === "failed" ? (
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                         </svg>
                                     ) : (
                                         stage.icon
@@ -225,7 +245,7 @@ export function ClientFlowDiagram({
                                 onClick={() => onStageClick?.(stage.id)}
                                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
                                     status === "current" ? "ring-4 ring-[#DEEBFF]" : ""
-                                }`}
+                                } ${status === "failed" ? "ring-4 ring-[#FFEBE6]" : ""}`}
                                 style={{
                                     backgroundColor: colors.bg,
                                     border: `2px solid ${colors.border}`,
@@ -236,6 +256,10 @@ export function ClientFlowDiagram({
                                 {status === "completed" ? (
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                ) : status === "failed" ? (
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                     </svg>
                                 ) : (
                                     stage.icon
@@ -264,6 +288,8 @@ export function getClientStage(client: {
     documentsRequired: number;
     hasBankConnection: boolean;
     status: string;
+    hasFailedValidations?: boolean;
+    hasPendingReviews?: boolean;
 }): FlowStage {
     const docProgress = client.documentsRequired > 0
         ? client.documentsUploaded / client.documentsRequired
@@ -276,15 +302,24 @@ export function getClientStage(client: {
 
     // Ready
     if (client.status === "ready" || (docProgress === 1 && client.hasBankConnection)) {
+        // Block progression if there are failed validations or pending reviews
+        if (client.hasFailedValidations || client.hasPendingReviews) {
+            return "verification";
+        }
         return "ready";
     }
 
     // Review
     if (client.status === "review" || client.status === "under_review") {
+        // Block at verification if there are unresolved validation issues
+        if (client.hasFailedValidations || client.hasPendingReviews) {
+            return "verification";
+        }
         return "review";
     }
 
     // Verification (docs complete, checking)
+    // Client stays here until all validations pass or are approved
     if (docProgress === 1) {
         return "verification";
     }
@@ -303,18 +338,41 @@ export function getClientStage(client: {
     return "onboarding";
 }
 
+// Helper to check if client has validation issues blocking flow
+export function hasBlockingValidationIssues(client: {
+    hasFailedValidations?: boolean;
+    hasPendingReviews?: boolean;
+}): boolean {
+    return Boolean(client.hasFailedValidations || client.hasPendingReviews);
+}
+
 // Compact inline version for table rows
-export function ClientFlowIndicator({ currentStage }: { currentStage: FlowStage }) {
+export function ClientFlowIndicator({
+    currentStage,
+    hasFailedValidations = false
+}: {
+    currentStage: FlowStage;
+    hasFailedValidations?: boolean;
+}) {
     const currentIndex = stages.findIndex((s) => s.id === currentStage);
     const progress = ((currentIndex + 1) / stages.length) * 100;
 
     const stageConfig = stages.find(s => s.id === currentStage);
 
     const getColor = () => {
+        // Show red if has failed validations at verification stage
+        if (hasFailedValidations && currentStage === "verification") return "#DE350B";
         if (currentStage === "submitted") return "#36B37E";
         if (currentStage === "ready") return "#36B37E";
         if (currentStage === "review" || currentStage === "verification") return "#0052CC";
         return "#FF991F";
+    };
+
+    const getLabel = () => {
+        if (hasFailedValidations && currentStage === "verification") {
+            return "FAILED";
+        }
+        return stageConfig?.label;
     };
 
     return (
@@ -329,7 +387,7 @@ export function ClientFlowIndicator({ currentStage }: { currentStage: FlowStage 
                 className="text-[10px] font-bold tracking-wide whitespace-nowrap"
                 style={{ color: getColor() }}
             >
-                {stageConfig?.label}
+                {getLabel()}
             </span>
         </div>
     );

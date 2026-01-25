@@ -99,6 +99,17 @@ function BankIcon({ size }: { size: string }) {
     );
 }
 
+// Flag icon component for flagged documents
+function FlagIcon({ size }: { size: string }) {
+    const sizeClass = size === "lg" ? "w-5 h-5" : size === "md" ? "w-5 h-5" : "w-4 h-4";
+    return (
+        <svg className={sizeClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+            <line x1="4" y1="22" x2="4" y2="15" />
+        </svg>
+    );
+}
+
 export interface DashboardMetrics {
     totalClients: number;
     documentsPending: number;
@@ -107,6 +118,8 @@ export interface DashboardMetrics {
     vatSubtitle?: string;
     bankConnections: number;
     bankSubtitle?: string;
+    flaggedDocuments?: number;
+    flaggedSubtitle?: string;
 }
 
 interface QuickMetricsProps {
@@ -141,12 +154,12 @@ export function QuickMetrics({ metrics, onMetricClick }: QuickMetricsProps) {
             accentColor: "#6554C0", // Purple
         },
         {
-            id: "bank-connections",
-            title: "Bank Connected",
-            value: metrics.bankConnections,
-            subtitle: metrics.bankSubtitle || "Active links",
-            icon: <BankIcon size="md" />,
-            accentColor: "#36B37E", // Success green
+            id: "flagged-documents",
+            title: "Flagged",
+            value: metrics.flaggedDocuments ?? 0,
+            subtitle: metrics.flaggedSubtitle || "Needs review",
+            icon: <FlagIcon size="md" />,
+            accentColor: "#DE350B", // Error red
         },
     ];
 

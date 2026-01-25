@@ -24,19 +24,50 @@ interface SidebarProps {
     activeItem?: string;
     clientCount?: number;
     vatDueCount?: number;
+    flaggedCount?: number;
+}
+
+// Flag icon for flagged documents
+function FlagIcon({ size }: { size: string }) {
+    const sizeClass = size === "md" ? "w-5 h-5" : "w-4 h-4";
+    return (
+        <svg className={sizeClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+        </svg>
+    );
 }
 
 const mainNavItems: NavItem[] = [
     { id: "dashboard", label: "Dashboard", icon: <DashboardIcon size="md" /> },
     { id: "clients", label: "Clients", icon: <ClientsIcon size="md" /> },
+    { id: "flagged", label: "Flagged", icon: <FlagIcon size="md" /> },
     { id: "vat-returns", label: "VAT Returns", icon: <VatIcon size="md" /> },
 ];
 
-export function Sidebar({ onNavigate, activeItem = "dashboard", clientCount, vatDueCount }: SidebarProps) {
+export function Sidebar({ onNavigate, activeItem = "dashboard", clientCount, vatDueCount, flaggedCount }: SidebarProps) {
     const [isCollapsed, setIsCollapsed] = useState(false);
 
     const handleNavClick = (itemId: string) => {
         onNavigate?.(itemId);
+    };
+
+    // Get badge for nav item
+    const getBadge = (itemId: string): number | undefined => {
+        switch (itemId) {
+            case "clients":
+                return clientCount;
+            case "vat-returns":
+                return vatDueCount;
+            case "flagged":
+                return flaggedCount;
+            default:
+                return undefined;
+        }
+    };
+
+    // Check if item should show alert badge (red)
+    const isAlertBadge = (itemId: string): boolean => {
+        return itemId === "flagged";
     };
 
     return (
@@ -76,7 +107,8 @@ export function Sidebar({ onNavigate, activeItem = "dashboard", clientCount, vat
             <nav className="flex-1 px-3 py-2 overflow-y-auto custom-scrollbar-dark">
                 <div className="space-y-0.5">
                     {mainNavItems.map((item) => {
-                        const badge = item.id === "clients" ? clientCount : item.id === "vat-returns" ? vatDueCount : undefined;
+                        const badge = getBadge(item.id);
+                        const isAlert = isAlertBadge(item.id);
                         return (
                             <button
                                 key={item.id}
@@ -95,7 +127,13 @@ export function Sidebar({ onNavigate, activeItem = "dashboard", clientCount, vat
                                     <>
                                         <span className="flex-1 font-medium text-[13px]">{item.label}</span>
                                         {badge !== undefined && badge > 0 && (
-                                            <span className="px-1.5 py-0.5 text-[11px] font-medium rounded bg-[#30363D] text-[#8B949E]">
+                                            <span
+                                                className={`px-1.5 py-0.5 text-[11px] font-medium rounded ${
+                                                    isAlert
+                                                        ? "bg-[#DA3633] text-white"
+                                                        : "bg-[#30363D] text-[#8B949E]"
+                                                }`}
+                                            >
                                                 {badge}
                                             </span>
                                         )}

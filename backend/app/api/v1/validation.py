@@ -105,3 +105,36 @@ def run_period_validation(
         "message": "Validation queued for all extracted documents in the period",
         "vat_period_id": period_id,
     }
+
+
+@router.post("/run/client/{client_id}")
+def run_client_validation(
+    client_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Run validation on all extracted documents for a client.
+
+    Validates all documents across all VAT periods for the client.
+    Uses specialized AI agents for document-specific validation.
+    """
+    from sqlalchemy import select
+    from app.models.client import Client
+    from app.models.vat_period import VATPeriod
+    from app.tasks.validation_tasks import validate_client_documents
+
+    # Check client exists
+    client = db.get(Client, client_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
+        )
+
+    # Queue validation task
+    background_tasks.add_task(validate_client_documents, client_id)
+
+    return {
+        "message": f"Validation queued for all documents belonging to client {client.name}",
+        "client_id": client_id,
+        "client_name": client.name,
+    }
