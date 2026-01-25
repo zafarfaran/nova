@@ -14,8 +14,8 @@ export function BentoGrid() {
           <h2 className="text-[56px] leading-[1.1] font-light text-black mb-6 tracking-tight max-w-[800px] mx-auto">
             Do more with way less effort
           </h2>
-          <p className="text-[24px] leading-[1.5] text-[#000000cc] max-w-[700px] mx-auto font-light">
-            From chaos to clarity in seconds. Every feature built to make you unstoppable.
+          <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+            Everything you need to manage tax compliance for hundreds of clients
           </p>
         </div>
 
@@ -41,22 +41,26 @@ export function BentoGrid() {
               <h3 className="text-[32px] leading-[1.2] font-light text-black mb-4">
                 Intelligence that thinks ahead
               </h3>
-              <p className="text-[16px] leading-[1.6] text-[#000000cc] mb-8">
-                Upload hundreds of invoices. Claude extracts every detail, validates VAT numbers against HMRC, flags anomalies, and auto-categorizes transactions. In seconds, not hours.
+              <p className="text-slate-400 mb-6">
+                Claude AI automatically extracts invoice data, validates tax numbers, and flags anomalies. No manual data entry required.
               </p>
-
-              <div className="grid grid-cols-3 gap-4 mt-8">
-                <div className="border border-[#e8e8e8] rounded-[4px] p-6 bg-[#fafafa]">
-                  <div className="text-[32px] font-medium text-black mb-1">10,000+</div>
-                  <div className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono">Docs/hour</div>
-                </div>
-                <div className="border border-[#e8e8e8] rounded-[4px] p-6 bg-[#fafafa]">
-                  <div className="text-[32px] font-medium text-[#36B37E] mb-1">99.9%</div>
-                  <div className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono">Accuracy</div>
-                </div>
-                <div className="border border-[#e8e8e8] rounded-[4px] p-6 bg-[#fafafa]">
-                  <div className="text-[32px] font-medium text-[#0052CC] mb-1">&lt;1s</div>
-                  <div className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono">Per invoice</div>
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 shadow-sm">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 bg-slate-700 rounded flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-white">Invoice_Q1_2024.pdf</span>
+                      <span className="text-xs text-green-400 font-medium">✓ Validated</span>
+                    </div>
+                    <div className="text-xs text-slate-400 space-y-1">
+                      <div>Tax Number: GB123456789</div>
+                      <div>Amount: £1,250.00 (Tax: £250.00)</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

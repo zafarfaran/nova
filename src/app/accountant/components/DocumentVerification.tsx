@@ -58,10 +58,10 @@ export interface VerificationSummary {
 // Rule labels
 const ruleLabels: Record<RuleType, string> = {
     required_fields: "Required Fields",
-    vat_number_format: "VAT Number Format",
+    vat_number_format: "Tax Number Format",
     date_in_period: "Date in Period",
     totals_match: "Totals Match",
-    vat_rate_valid: "VAT Rate Valid",
+    vat_rate_valid: "Tax Rate Valid",
     duplicate_detection: "Duplicate Check",
     ai_anomaly: "AI Anomaly Check",
     currency_valid: "Currency Valid",
@@ -505,7 +505,7 @@ async function reprocessDocument(docId: string): Promise<{ success: boolean; mes
 
 async function runValidation(periodId: number): Promise<{ success: boolean; message: string }> {
     try {
-        // Call Python backend to run validation for the VAT period
+        // Call Python backend to run validation for the tax period
         const response = await fetch(`${API_BASE_URL}/api/v1/validation/run-period/${periodId}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -578,7 +578,7 @@ export function DocumentVerification({
             if (data.periodId) {
                 setPeriodId(data.periodId);
             } else {
-                setError("No VAT period found for this client. Create a VAT period first.");
+                setError("No tax period found for this client. Create a tax period first.");
             }
         } catch (err) {
             console.error("Error fetching verification data:", err);
@@ -595,7 +595,7 @@ export function DocumentVerification({
     // Run extraction handler
     const handleRunExtraction = async () => {
         if (!periodId) {
-            setError("No VAT period found for this client");
+            setError("No tax period found for this client");
             return;
         }
 
@@ -667,7 +667,7 @@ export function DocumentVerification({
     // Run validation handler with polling
     const handleRunValidation = async () => {
         if (!periodId) {
-            setError("No VAT period found for this client");
+            setError("No tax period found for this client");
             return;
         }
 
@@ -982,8 +982,8 @@ export function DocumentVerification({
                     <p className="text-[12px] text-[#5E6C84]">No documents found for this client</p>
                     <p className="text-[10px] text-[#97A0AF] mt-1">
                         {periodId
-                            ? "Upload documents to the client's VAT period to begin verification."
-                            : "Create a VAT period and upload documents first."
+                            ? "Upload documents to the client's tax period to begin verification."
+                            : "Create a tax period and upload documents first."
                         }
                     </p>
                 </div>
@@ -1072,9 +1072,9 @@ export function getMockVerificationData(): DocumentVerificationData[] {
             uploadedAt: new Date(),
             validationResults: [
                 { id: "1a", ruleType: "required_fields", status: "passed", message: "All required fields present" },
-                { id: "1b", ruleType: "vat_number_format", status: "passed", message: "VAT number format valid" },
-                { id: "1c", ruleType: "date_in_period", status: "passed", message: "Invoice date within VAT period" },
-                { id: "1d", ruleType: "totals_match", status: "passed", message: "Net + VAT = Gross" },
+                { id: "1b", ruleType: "vat_number_format", status: "passed", message: "Tax number format valid" },
+                { id: "1c", ruleType: "date_in_period", status: "passed", message: "Invoice date within tax period" },
+                { id: "1d", ruleType: "totals_match", status: "passed", message: "Net + Tax = Gross" },
                 { id: "1e", ruleType: "vat_rate_valid", status: "passed", message: "Standard rate (20%)" },
             ],
         },

@@ -42,9 +42,9 @@ function FlagIcon({ size }: { size: string }) {
 const mainNavItems: NavItem[] = [
     { id: "dashboard", label: "Dashboard", icon: <DashboardIcon size="md" /> },
     { id: "clients", label: "Clients", icon: <ClientsIcon size="md" /> },
-    { id: "ready", label: "Ready to Submit", icon: <CheckCircleIcon size="md" /> },
+    { id: "ready", label: "Ready for Submission", icon: <CheckCircleIcon size="md" /> },
     { id: "flagged", label: "Flagged", icon: <FlagIcon size="md" /> },
-    { id: "vat-returns", label: "VAT Returns", icon: <VatIcon size="md" /> },
+    { id: "vat-returns", label: "Tax Returns", icon: <VatIcon size="md" /> },
 ];
 
 export function Sidebar({
@@ -160,20 +160,6 @@ export function Sidebar({
             {/* Bottom Actions */}
             <div className="px-3 py-3 border-t border-white/5">
                 <div className="space-y-1">
-                    <button
-                        onClick={() => handleNavClick("ai-assistant")}
-                        className={`
-                            w-full flex items-center gap-3 px-3 py-2 rounded
-                            bg-[#0052CC] hover:bg-[#0747A6]
-                            text-white font-medium text-[13px]
-                            transition-all duration-100
-                            ${isCollapsed ? "justify-center" : ""}
-                        `}
-                    >
-                        <SparkleIcon size="sm" />
-                        {!isCollapsed && <span>AI Assistant</span>}
-                    </button>
-
                     <button
                         onClick={() => handleNavClick("settings")}
                         className={`

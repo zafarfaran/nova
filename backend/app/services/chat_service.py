@@ -23,6 +23,7 @@ You have access to tools to:
 
 Always be helpful, concise, and professional. When showing data, format it clearly.
 If asked about a specific client, use the tools to fetch real data.
+If asked about a client's stage or progress, use get_client_details and summarize their current flow stage.
 
 ## Creating Clients
 When a user wants to create a new client, you need at minimum:

@@ -33,7 +33,7 @@ const tools: Anthropic.Tool[] = [
     },
     {
         name: "search_clients",
-        description: "Search for clients in the database by name or email. Returns clients from both the local database (ClientSetup) and the backend VAT system.",
+        description: "Search for clients in the database by name or email. Returns clients from both the local database (ClientSetup) and the backend tax system.",
         input_schema: {
             type: "object",
             properties: {
@@ -47,7 +47,7 @@ const tools: Anthropic.Tool[] = [
     },
     {
         name: "get_vat_info",
-        description: "Get VAT period information for a specific client. Uses the backend VAT system for detailed VAT period data.",
+        description: "Get tax period information for a specific client. Uses the backend tax system for detailed period data.",
         input_schema: {
             type: "object",
             properties: {
@@ -178,7 +178,7 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
                     return `Invalid client ID: ${toolInput.clientId}`;
                 }
 
-                // Look up client with VAT periods
+                // Look up client with tax periods
                 const client = await db.client.findUnique({
                     where: { id: clientId },
                     include: {
@@ -193,24 +193,24 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
                     return `Client not found with ID: ${clientId}`;
                 }
 
-                let result = `VAT Information for ${client.name}:
-- VAT Scheme: ${client.vatScheme || "Not set"}
-- VAT Number: ${client.vatNumber || "Not set"}`;
+                let result = `Tax Information for ${client.name}:
+- Tax Scheme: ${client.vatScheme || "Not set"}
+- Tax Number: ${client.vatNumber || "Not set"}`;
 
                 if (client.vatPeriods.length > 0) {
-                    result += `\n\nVAT Periods (${client.vatPeriods.length} shown):\n${client.vatPeriods
+                    result += `\n\nTax Periods (${client.vatPeriods.length} shown):\n${client.vatPeriods
                         .map(
                             (p: { periodStart: Date; periodEnd: Date; status: string; dueDate: Date | null }) =>
                                 `- ${new Date(p.periodStart).toLocaleDateString()} - ${new Date(p.periodEnd).toLocaleDateString()}: ${p.status}${p.dueDate ? ` (Due: ${new Date(p.dueDate).toLocaleDateString()})` : ""}`
                         )
                         .join("\n")}`;
                 } else {
-                    result += "\n\nNo VAT periods found for this client.";
+                    result += "\n\nNo tax periods found for this client.";
                 }
 
                 return result;
             } catch (error) {
-                return `Error fetching VAT info: ${error}`;
+                return `Error fetching tax info: ${error}`;
             }
 
         case "search_documents":
@@ -319,7 +319,7 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
                 }
 
                 if (vatPeriod) {
-                    result += `\n\nVAT Period:
+                    result += `\n\nTax Period:
 - Period: ${new Date(vatPeriod.periodStart).toLocaleDateString()} - ${new Date(vatPeriod.periodEnd).toLocaleDateString()}
 - Status: ${vatPeriod.status}`;
                 }
@@ -359,7 +359,7 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
 
                 const currentPeriod = client.vatPeriods[0];
                 if (!currentPeriod) {
-                    return `No VAT period found for client "${client.name}" (ID: ${clientId})`;
+                    return `No tax period found for client "${client.name}" (ID: ${clientId})`;
                 }
 
                 const allDocuments = currentPeriod.evidenceItems.flatMap(
@@ -367,7 +367,7 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
                 );
 
                 if (allDocuments.length === 0) {
-                    return `No documents found for client "${client.name}" in the current VAT period.`;
+                    return `No documents found for client "${client.name}" in the current tax period.`;
                 }
 
                 const statusCounts = {
@@ -385,7 +385,7 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
                     }
                 });
 
-                let result = `Documents for ${client.name} (Current VAT Period):
+                let result = `Documents for ${client.name} (Current Tax Period):
 Total: ${allDocuments.length} document(s)
 
 Status Summary:
@@ -416,9 +416,9 @@ export async function POST(request: NextRequest) {
         const { messages, context } = await request.json();
 
         // Build system prompt with context
-        let systemPrompt = `You are an AI assistant for an accountant's VAT compliance dashboard. You help accountants manage their clients' VAT returns and documents.
+        let systemPrompt = `You are an AI assistant for an accountant's tax compliance dashboard. You help accountants manage their clients' tax returns and documents.
 
-You have access to tools to search for clients, documents, and VAT information. Use these tools when the user asks about specific clients or documents.
+You have access to tools to search for clients, documents, and tax information. Use these tools when the user asks about specific clients or documents.
 
 IMPORTANT: When the user refers to "the document", "this document", "the client", or "this client" without specifying which one, use the context provided below to determine which client or document they're referring to.`;
 

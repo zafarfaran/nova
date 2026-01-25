@@ -36,14 +36,14 @@ const validatorLabels: Record<string, { label: string; color: string; icon: stri
     InvoiceVerificationAgent: { label: "Invoice AI", color: "#0052CC", icon: "ai" },
     BankStatementVerificationAgent: { label: "Bank Statement AI", color: "#00875A", icon: "ai" },
     ReceiptVerificationAgent: { label: "Receipt AI", color: "#6554C0", icon: "ai" },
-    VATCertificateVerificationAgent: { label: "VAT Certificate AI", color: "#FF5630", icon: "ai" },
+    VATCertificateVerificationAgent: { label: "Tax Certificate AI", color: "#FF5630", icon: "ai" },
     ContractVerificationAgent: { label: "Contract AI", color: "#FF991F", icon: "ai" },
     PayrollVerificationAgent: { label: "Payroll AI", color: "#00B8D9", icon: "ai" },
     // Rule-based validators
     InvoiceValidator: { label: "Invoice Check", color: "#0052CC", icon: "rule" },
     BankStatementValidator: { label: "Bank Statement Check", color: "#00875A", icon: "rule" },
     ReceiptValidator: { label: "Receipt Check", color: "#6554C0", icon: "rule" },
-    VATCertificateValidator: { label: "VAT Certificate Check", color: "#FF5630", icon: "rule" },
+    VATCertificateValidator: { label: "Tax Certificate Check", color: "#FF5630", icon: "rule" },
     ContractValidator: { label: "Contract Check", color: "#FF991F", icon: "rule" },
     PayrollValidator: { label: "Payroll Check", color: "#00B8D9", icon: "rule" },
 };
@@ -245,10 +245,10 @@ function ValidatorBadge({ aiReasoning, ruleType }: { aiReasoning?: AIReasoning; 
         // Map rule types to readable labels
         const ruleTypeLabels: Record<string, string> = {
             REQUIRED_FIELDS: "Required Fields",
-            VAT_NUMBER_FORMAT: "VAT Format",
+            VAT_NUMBER_FORMAT: "Tax Format",
             DATE_IN_PERIOD: "Date Check",
             TOTALS_MATCH: "Calculation",
-            VAT_RATE_VALID: "VAT Rate",
+            VAT_RATE_VALID: "Tax Rate",
             DUPLICATE_DETECTION: "Duplicate",
             CURRENCY_VALID: "Currency",
             AI_ANOMALY: "AI Analysis",
