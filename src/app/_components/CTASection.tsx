@@ -2,59 +2,72 @@
 
 import { SignInButton } from "./SignInButton";
 import Image from "next/image";
+import { AnimateOnScroll } from "./AnimateOnScroll";
 
 export function CTASection() {
   return (
-    <section className="py-20 bg-[#fafafa] border-t border-[#e8e8e8]">
+    <section className="py-20 bg-[#F6F2ED] border-t border-[#E4DDD3]">
       <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12">
-        <div className="border border-[#e8e8e8] rounded-[4px] p-16 md:p-20 bg-white text-center">
+        <div className="border border-[#E4DDD3] rounded-[4px] p-16 md:p-20 bg-[#FFFEFB] text-center">
           {/* Logo */}
-          <div className="inline-flex items-center justify-center mb-8">
-            <Image
-              src="/logo.svg"
-              alt="Nova"
-              width={48}
-              height={48}
-              className="w-12 h-12"
-            />
-          </div>
+          <AnimateOnScroll variant="up">
+            <div className="inline-flex items-center justify-center mb-8">
+              <Image
+                src="/logo.svg"
+                alt="Nova"
+                width={48}
+                height={48}
+                className="w-12 h-12"
+              />
+            </div>
+          </AnimateOnScroll>
 
-          <span className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono mb-8 block">
-            Join the revolution
-          </span>
+          <AnimateOnScroll variant="up" delayClass="lp-delay-1">
+            <span className="text-[11px] uppercase tracking-[1px] text-[#9ba1a5] font-mono mb-8 block">
+              Join the revolution
+            </span>
+          </AnimateOnScroll>
 
-          <h2 className="text-[56px] leading-[1.1] font-light text-black mb-8 tracking-tight max-w-[700px] mx-auto">
-            Ready to 10x your output?
-          </h2>
+          <AnimateOnScroll variant="up" delayClass="lp-delay-2">
+            <h2 className="text-[44px] leading-[1.1] font-light text-black mb-8 tracking-tight max-w-[700px] mx-auto">
+              Ready to 10x your output?
+            </h2>
+          </AnimateOnScroll>
 
-          <p className="text-[24px] leading-[1.5] text-[#000000cc] mb-12 max-w-[600px] mx-auto font-light">
-            Stop being buried in paperwork. Start being the accountant everyone wants to work with.
-          </p>
+          <AnimateOnScroll variant="up" delayClass="lp-delay-3">
+            <p className="text-[18px] leading-[1.6] text-[#000000cc] mb-12 max-w-[600px] mx-auto font-light">
+              Stop being buried in paperwork. Start being the accountant everyone wants to work with.
+            </p>
+          </AnimateOnScroll>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
-            <SignInButton variant="white" />
-            <button className="inline-flex items-center gap-2 px-6 py-3 text-black text-[16px] font-medium hover:text-[#0052CC] transition-colors">
-              Schedule a demo
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
-          </div>
+          <AnimateOnScroll variant="up" delayClass="lp-delay-4">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
+              <SignInButton variant="white" />
+              <button className="inline-flex items-center gap-2 px-6 py-3 text-black text-[14px] font-medium hover:text-[#0052CC] transition-colors">
+                Schedule a demo
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
+          </AnimateOnScroll>
 
           {/* Trust Indicators */}
-          <div className="flex flex-wrap items-center justify-center gap-8 text-[14px] mb-16">
-            {[
-              { text: "Free trial", subtext: "No credit card" },
-              { text: "5 min setup", subtext: "Start today" },
-              { text: "Unlimited scale", subtext: "Grow freely" }
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-[#0052CC] rounded-full"></div>
-                <span className="text-black font-medium">{item.text}</span>
-              </div>
-            ))}
-          </div>
+          <AnimateOnScroll variant="up" delayClass="lp-delay-5">
+            <div className="flex flex-wrap items-center justify-center gap-8 text-[12px] mb-16">
+              {[
+                { text: "Free trial", subtext: "No credit card" },
+                { text: "5 min setup", subtext: "Start today" },
+                { text: "Unlimited scale", subtext: "Grow freely" }
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-[#0052CC] rounded-full"></div>
+                  <span className="text-black font-medium">{item.text}</span>
+                </div>
+              ))}
+            </div>
+          </AnimateOnScroll>
         </div>
 
         {/* Value Props */}
@@ -73,10 +86,12 @@ export function CTASection() {
               description: "Real accountants on standby. Get help from people who understand your workflow."
             }
           ].map((prop, i) => (
-            <div key={i} className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors">
-              <h3 className="text-[20px] font-medium text-black mb-3">{prop.title}</h3>
-              <p className="text-[16px] leading-[1.6] text-[#000000cc]">{prop.description}</p>
-            </div>
+            <AnimateOnScroll key={i} variant={i % 2 === 0 ? "left" : "right"}>
+              <div className="border border-[#E4DDD3] rounded-[4px] p-10 bg-[#FFFEFB] hover:border-[#0052CC] transition-colors">
+                <h3 className="text-[16px] font-medium text-black mb-3">{prop.title}</h3>
+                <p className="text-[14px] leading-[1.6] text-[#000000cc]">{prop.description}</p>
+              </div>
+            </AnimateOnScroll>
           ))}
         </div>
       </div>

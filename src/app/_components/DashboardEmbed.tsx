@@ -1,30 +1,34 @@
 import Link from "next/link";
+import { AnimateOnScroll } from "./AnimateOnScroll";
 
 export function DashboardEmbed() {
   return (
     <section className="py-24 bg-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Your Dashboard
-          </h2>
-          <p className="text-lg text-slate-400 max-w-2xl mx-auto mb-8">
-            Manage all your VAT compliance in one place
-          </p>
-          <Link
-            href="/accountant"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black rounded-lg font-semibold hover:bg-slate-200 transition-colors"
-          >
-            Open Full Dashboard
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </Link>
-        </div>
+        <AnimateOnScroll variant="up">
+          <div className="text-center mb-12">
+            <h2 className="text-xl md:text-2xl font-bold text-white mb-4">
+              Your Dashboard
+            </h2>
+            <p className="text-sm text-slate-400 max-w-2xl mx-auto mb-8">
+              Manage all your tax compliance in one place
+            </p>
+            <Link
+              href="/accountant"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black rounded-lg text-[14px] font-semibold hover:bg-slate-200 transition-colors"
+            >
+              Open Full Dashboard
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </Link>
+          </div>
+        </AnimateOnScroll>
 
         {/* Dashboard Window Preview */}
-        <div className="relative">
+        <AnimateOnScroll variant="right" delayClass="lp-delay-2">
+          <div className="relative">
           {/* Glow Effect */}
           <div className="absolute -inset-1 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 rounded-2xl blur-xl"></div>
 
@@ -128,23 +132,26 @@ export function DashboardEmbed() {
               </div>
             </div>
           </div>
-        </div>
+          </div>
+        </AnimateOnScroll>
 
         {/* CTA to Full Dashboard */}
-        <div className="mt-12 text-center">
-          <p className="text-slate-400 mb-4">
-            This is a preview. Access the full dashboard for complete features.
-          </p>
-          <Link
-            href="/accountant"
-            className="inline-flex items-center gap-2 text-white hover:text-slate-300 transition-colors"
-          >
-            <span className="font-medium">Explore full dashboard</span>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-            </svg>
-          </Link>
-        </div>
+        <AnimateOnScroll variant="up" delayClass="lp-delay-3">
+          <div className="mt-12 text-center">
+            <p className="text-slate-400 mb-4">
+              This is a preview. Access the full dashboard for complete features.
+            </p>
+            <Link
+              href="/accountant"
+              className="inline-flex items-center gap-2 text-white hover:text-slate-300 transition-colors"
+            >
+              <span className="font-medium">Explore full dashboard</span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </Link>
+          </div>
+        </AnimateOnScroll>
       </div>
     </section>
   );

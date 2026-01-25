@@ -12,19 +12,19 @@ export default async function HomePage() {
   const session = await auth();
 
   return (
-    <main className="min-h-screen bg-[#fafafa]">
+    <main className="min-h-screen bg-[#F6F2ED]">
       {/* Navigation */}
-      <nav className="border-b border-[#e8e8e8] bg-[#fafafa] sticky top-0 z-50 backdrop-blur-sm bg-[#fafafa]/95">
-        <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12 py-6 flex justify-between items-center">
-          <div className="flex items-center space-x-3">
+      <nav className="sticky top-0 z-50 border-b border-[#E4DDD3] bg-[#F6F2ED]/90 backdrop-blur-md">
+        <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12 h-14 flex justify-between items-center">
+          <div className="flex items-center gap-3">
             <Image
               src="/logo.svg"
               alt="Nova Logo"
-              width={32}
-              height={32}
-              className="w-8 h-8"
+              width={28}
+              height={28}
+              className="w-7 h-7"
             />
-            <span className="text-[20px] font-medium text-black">Nova</span>
+            <span className="text-[14px] font-semibold uppercase tracking-[0.08em] text-black">Nova</span>
           </div>
           {session?.user ? <SignOutButton /> : <SignInButton />}
         </div>
@@ -43,7 +43,7 @@ export default async function HomePage() {
       )}
 
       {/* Footer */}
-      <footer className="border-t border-[#e8e8e8] bg-[#fafafa] py-12">
+      <footer className="border-t border-[#E4DDD3] bg-[#F6F2ED] py-12">
         <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
@@ -54,7 +54,7 @@ export default async function HomePage() {
                 height={32}
                 className="w-8 h-8"
               />
-              <span className="text-[16px] font-medium text-black">Nova</span>
+            <span className="text-[15px] font-medium text-black">Nova</span>
             </div>
             <p className="text-[14px] text-[#9ba1a5]">
               © 2026 Nova. All rights reserved.

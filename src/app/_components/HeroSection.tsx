@@ -11,11 +11,11 @@ interface HeroSectionProps {
 
 export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
   return (
-    <section className="relative bg-[#fafafa] pt-32 pb-20 border-b border-[#e8e8e8]">
+    <section className="relative bg-[#F6F2ED] pt-32 pb-20 border-b border-[#E4DDD3]">
       <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12">
         <div className="text-center max-w-[700px] mx-auto">
           {/* Logo Badge */}
-          <div className="inline-flex items-center justify-center mb-8">
+          <div className="inline-flex items-center justify-center mb-8 lp-animate">
             <Image
               src="/logo.svg"
               alt="Nova"
@@ -35,18 +35,18 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
           {/* Main Heading */}
           {isLoggedIn ? (
             <>
-              <h1 className="text-[56px] leading-[1.1] font-light text-black mb-6 tracking-tight">
+              <h1 className="text-[44px] leading-[1.1] font-light text-black mb-6 tracking-tight lp-animate lp-delay-1">
                 Welcome back,
                 <br />
                 <span className="font-normal">{userName?.split(" ")[0] || "there"}</span>
               </h1>
-              <p className="text-[24px] leading-[1.5] text-[#000000cc] mb-12 font-light">
+              <p className="text-[18px] leading-[1.6] text-[#000000cc] mb-12 font-light lp-animate lp-delay-2">
                 Your command center is ready. Manage hundreds of clients, automate compliance, and reclaim your time.
               </p>
-              <div className="flex justify-center">
+              <div className="flex justify-center lp-animate lp-delay-3">
                 <Link
                   href="/accountant"
-                  className="inline-flex items-center gap-3 px-8 py-4 bg-black text-white text-[16px] font-medium rounded-[4px] hover:bg-[#0052CC] transition-colors"
+                  className="inline-flex items-center gap-3 px-8 py-4 bg-black text-white text-[14px] font-medium rounded-[4px] hover:bg-[#0052CC] transition-colors"
                 >
                   Open Dashboard
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,17 +57,17 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
             </>
           ) : (
             <>
-              <h1 className="text-[56px] sm:text-[64px] lg:text-[72px] leading-[1.1] font-light text-black mb-8 tracking-tight">
+              <h1 className="text-[44px] sm:text-[52px] lg:text-[60px] leading-[1.1] font-light text-black mb-8 tracking-tight lp-animate lp-delay-1">
                 10x Your Accounting Power
               </h1>
 
               {/* Subheading */}
-              <p className="text-[24px] leading-[1.5] text-[#000000cc] mb-16 font-light">
+              <p className="text-[18px] leading-[1.6] text-[#000000cc] mb-16 font-light lp-animate lp-delay-2">
                 Stop drowning in spreadsheets. Nova is the AI-powered platform that turns accountants into productivity machines.
               </p>
 
               {/* Power Stats */}
-              <div className="flex flex-wrap justify-center gap-8 mb-16 text-[14px]">
+              <div className="flex flex-wrap justify-center gap-8 mb-16 text-[12px] lp-animate lp-delay-3">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-[#36B37E] rounded-full"></div>
                   <span className="text-black font-medium">95% time saved</span>
@@ -83,9 +83,9 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
               </div>
 
               {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-20">
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-20 lp-animate lp-delay-4">
                 <SignInButton variant="hero" />
-                <button className="inline-flex items-center gap-2 px-6 py-3 text-black text-[16px] font-medium hover:text-[#0052CC] transition-colors">
+                <button className="inline-flex items-center gap-2 px-6 py-3 text-black text-[14px] font-medium hover:text-[#0052CC] transition-colors">
                   Watch demo
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -99,9 +99,9 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
 
         {/* Dashboard Preview - Only show for non-logged in users */}
         {!isLoggedIn && (
-          <div className="mt-20">
-            <div className="border border-[#e8e8e8] rounded-[4px] overflow-hidden bg-white shadow-sm">
-              <div className="bg-[#F4F5F7] border-b border-[#e8e8e8] px-4 py-3 flex items-center gap-3">
+          <div className="mt-20 lp-animate lp-delay-5">
+            <div className="border border-[#E4DDD3] rounded-[4px] overflow-hidden bg-[#FFFEFB] shadow-sm">
+              <div className="bg-[#F2EEE8] border-b border-[#E4DDD3] px-4 py-3 flex items-center gap-3">
                 <div className="flex gap-2">
                   <div className="w-3 h-3 rounded-full bg-[#DE350B]"></div>
                   <div className="w-3 h-3 rounded-full bg-[#FF991F]"></div>
@@ -115,7 +115,7 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
                   className="w-4 h-4"
                 />
                 <div className="flex-1 text-center">
-                  <div className="inline-flex items-center gap-2 bg-white border border-[#e8e8e8] rounded-[4px] px-4 py-1.5 text-[12px] text-[#5E6C84]">
+                  <div className="inline-flex items-center gap-2 bg-[#FFFEFB] border border-[#E4DDD3] rounded-[4px] px-4 py-1.5 text-[12px] text-[#5E6C84]">
                     <svg className="w-3 h-3 text-[#36B37E]" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                     </svg>
@@ -123,7 +123,7 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
                   </div>
                 </div>
               </div>
-              <div className="aspect-[16/9] bg-[#FAFBFC] p-8">
+              <div className="aspect-[16/9] bg-[#F7F3EE] p-8">
                 <div className="grid grid-cols-4 gap-4 mb-6">
                   {[
                     { label: "CLIENTS", value: "248", color: "#0052CC" },
@@ -131,15 +131,15 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
                     { label: "COMPLETE", value: "236", color: "#36B37E" },
                     { label: "FLAGGED", value: "3", color: "#DE350B" }
                   ].map((stat, i) => (
-                    <div key={i} className="bg-white border border-[#e8e8e8] rounded-[4px] p-6">
+                    <div key={i} className="bg-[#FFFEFB] border border-[#E4DDD3] rounded-[4px] p-6">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.04em] mb-3" style={{ color: stat.color }}>{stat.label}</div>
                       <div className="text-[32px] font-semibold" style={{ color: stat.color }}>{stat.value}</div>
                     </div>
                   ))}
                 </div>
-                <div className="bg-white border border-[#e8e8e8] rounded-[4px] p-6 space-y-4">
+                <div className="bg-[#FFFEFB] border border-[#E4DDD3] rounded-[4px] p-6 space-y-4">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex items-center gap-4 p-3 hover:bg-[#F4F5F7] rounded-[4px] transition-colors">
+                    <div key={i} className="flex items-center gap-4 p-3 hover:bg-[#F5F1EB] rounded-[4px] transition-colors">
                       <div className="w-10 h-10 bg-[#0052CC] rounded-[4px] flex items-center justify-center text-white font-semibold text-[14px]">
                         {String.fromCharCode(64 + i)}
                       </div>

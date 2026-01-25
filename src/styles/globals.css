@@ -4,3 +4,100 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
+
+@keyframes lpFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lpFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lpSlideLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes lpSlideRight {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.lp-animate {
+  animation: lpFadeUp 0.7s ease-out both;
+}
+
+.lp-animate-fade {
+  animation: lpFadeIn 0.6s ease-out both;
+}
+
+.lp-animate-left {
+  animation: lpSlideLeft 0.7s ease-out both;
+}
+
+.lp-animate-right {
+  animation: lpSlideRight 0.7s ease-out both;
+}
+
+.lp-hidden {
+  opacity: 0;
+}
+
+.lp-hidden-up {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.lp-hidden-left {
+  opacity: 0;
+  transform: translateX(-22px);
+}
+
+.lp-hidden-right {
+  opacity: 0;
+  transform: translateX(22px);
+}
+
+.lp-delay-1 {
+  animation-delay: 120ms;
+}
+
+.lp-delay-2 {
+  animation-delay: 220ms;
+}
+
+.lp-delay-3 {
+  animation-delay: 320ms;
+}
+
+.lp-delay-4 {
+  animation-delay: 420ms;
+}
+
+.lp-delay-5 {
+  animation-delay: 520ms;
+}

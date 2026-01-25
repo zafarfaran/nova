@@ -159,7 +159,7 @@ Direct integration with UK banks via secure APIs. Transactions sync in real-time
 
 ### Banking & Compliance
 - **Open Banking APIs** — Secure bank connections
-- **HMRC API Integration** — VAT number validation
+- **HMRC API Integration** — VAT number validation (PoC)
 - **Encrypted storage** — Bank-grade security for sensitive data
 
 
