@@ -1,6 +1,8 @@
 """Email service for composing and sending emails with AI assistance."""
 
 import asyncio
+import base64
+import os
 import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -34,10 +36,116 @@ class EmailService:
         self.db = db
         self.ai_provider = ai_provider
         self.settings: Settings = get_settings()
+        self._logo_base64: str | None = None
+
+    def _get_logo_base64(self) -> str:
+        """Get Nova logo as base64 encoded string for email embedding.
+
+        Returns:
+            Base64 encoded logo SVG
+        """
+        if self._logo_base64:
+            return self._logo_base64
+
+        # Try to read logo from public folder
+        logo_paths = [
+            "../public/logo.svg",  # From backend folder
+            "../../public/logo.svg",  # Alternative path
+            "/app/public/logo.svg",  # Docker path
+        ]
+
+        logo_svg = None
+        for path in logo_paths:
+            try:
+                full_path = os.path.join(os.path.dirname(__file__), path)
+                if os.path.exists(full_path):
+                    with open(full_path, 'rb') as f:
+                        logo_svg = f.read()
+                    break
+            except Exception:
+                continue
+
+        # Fallback to hardcoded logo if file not found
+        if not logo_svg:
+            logo_svg = b'''<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="256" cy="256" r="256" fill="#000000"/>
+  <path d="M256 96 C170 96 112 158 112 236 V292 C112 320 142 340 176 340 H300 C338 340 368 316 368 284 V236 C368 158 342 96 256 96 Z" fill="#FFFFFF"/>
+  <rect x="190" y="210" rx="14" ry="14" width="28" height="56" fill="#000000"/>
+  <rect x="252" y="220" rx="14" ry="14" width="28" height="48" fill="#000000"/>
+</svg>'''
+
+        self._logo_base64 = base64.b64encode(logo_svg).decode('utf-8')
+        return self._logo_base64
+
+    def _wrap_in_html_template(self, body: str, subject: str = "") -> str:
+        """Wrap email body in professional HTML template with Nova branding.
+
+        Args:
+            body: Email body content (can be plain text or simple HTML)
+            subject: Email subject for reference
+
+        Returns:
+            Full HTML email with Nova branding
+        """
+        logo_base64 = self._get_logo_base64()
+
+        # Convert plain text to HTML if needed
+        if not ("<p>" in body.lower() or "<div>" in body.lower() or "<html>" in body.lower()):
+            # Simple text - convert line breaks to paragraphs
+            paragraphs = body.split('\n\n')
+            body_html = ''.join(f'<p style="margin: 0 0 16px 0; line-height: 1.6;">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs if p.strip())
+        else:
+            body_html = body
+
+        return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #fafafa;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fafafa; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <!-- Main Container -->
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border: 1px solid #e8e8e8; border-radius: 4px;">
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td style="padding: 32px 40px; text-align: center; border-bottom: 1px solid #e8e8e8;">
+                            <img src="data:image/svg+xml;base64,{logo_base64}" alt="Nova" width="48" height="48" style="display: inline-block; vertical-align: middle;">
+                            <span style="font-size: 20px; font-weight: 500; color: #000000; margin-left: 12px; vertical-align: middle;">Nova</span>
+                        </td>
+                    </tr>
+
+                    <!-- Body Content -->
+                    <tr>
+                        <td style="padding: 40px; color: #000000cc; font-size: 16px; line-height: 1.6;">
+                            {body_html}
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 24px 40px; background-color: #fafafa; border-top: 1px solid #e8e8e8; text-align: center;">
+                            <p style="margin: 0 0 8px 0; font-size: 14px; color: #9ba1a5;">
+                                Powered by Nova - 10x Your Accounting Power
+                            </p>
+                            <p style="margin: 0; font-size: 12px; color: #9ba1a5;">
+                                © 2026 Nova. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>'''
 
     def _get_system_prompt(self) -> str:
         """Get system prompt for email generation."""
-        return """You are an AI assistant for Nova VAT Readiness Tool, helping to compose professional emails to clients.
+        return """You are an AI assistant for Nova, the AI-powered platform that helps accountants 10x their productivity.
 
 Your role is to:
 - Write clear, professional, and courteous emails
@@ -45,18 +153,20 @@ Your role is to:
 - Include relevant information from the context provided
 - Follow UK business email etiquette
 - Be concise but informative and helpful
+- Reflect Nova's mission to make accountants unstoppable
 
 Guidelines:
 - Use proper email structure (greeting, body, closing)
 - Address the recipient by name when available
 - Stay focused on the purpose of the email
-- Use professional language appropriate for accountancy/VAT services
+- Use professional language appropriate for accountancy services
 - Include relevant details from the context
 - End with a clear call-to-action if needed
 - For welcome emails, be warm and welcoming while being professional
 - Include clickable links when URLs are provided
 - Use bullet points or numbered lists for steps/items when appropriate
 - Keep the tone helpful and supportive, not overwhelming
+- Emphasize how Nova helps save time and increase efficiency
 
 Email Structure:
 1. Warm greeting with recipient's name
@@ -65,7 +175,7 @@ Email Structure:
 4. Clear call-to-action with any links
 5. Professional closing with offer to help
 
-Remember: You're helping clients navigate VAT compliance, which can be complex. Be clear, helpful, and encouraging.
+Remember: You're helping accountants save time and work smarter with Nova's AI-powered tools. Be clear, helpful, and encouraging.
 """
 
     def _build_generation_prompt(
@@ -115,13 +225,13 @@ Remember: You're helping clients navigate VAT compliance, which can be complex. 
             EmailPurpose.VALIDATION_ISSUES: "Inform the client about validation issues found in their documents. Be constructive and helpful.",
             EmailPurpose.INVOICE_REQUEST: "Request specific invoices or receipts from the client.",
             EmailPurpose.FOLLOW_UP: "Follow up on a previous communication or request.",
-            EmailPurpose.WELCOME: """Welcome a new client to the Nova VAT system. This is their first interaction with us, so:
+            EmailPurpose.WELCOME: """Welcome a new client to Nova. This is their first interaction with us, so:
 - Be warm, welcoming, and enthusiastic
-- Explain what Nova VAT does and how it will help them
+- Explain how Nova helps accountants work smarter and save time
 - Include the onboarding URL as a clickable link
 - List the clear steps they need to follow (use numbered list from context)
 - Mention the required documents they'll need to upload (use list from context)
-- Highlight the benefits of using the system (from context)
+- Highlight the benefits of using Nova (from context)
 - End with support information and encourage them to reach out with questions
 - Make them feel confident and excited to get started""",
             EmailPurpose.GENERAL: "General communication with the client.",
@@ -214,7 +324,7 @@ Remember: You're helping clients navigate VAT compliance, which can be complex. 
                     body_lines.append(line)
 
             return {
-                "subject": subject or "Message from Nova VAT",
+                "subject": subject or "Message from Nova",
                 "body": "\n".join(body_lines).strip() or response,
             }
 
@@ -265,12 +375,18 @@ Remember: You're helping clients navigate VAT compliance, which can be complex. 
             msg["Reply-To"] = reply_to
 
         # Add body (support both plain text and HTML)
-        if "<html>" in body.lower() or "<p>" in body.lower():
-            # HTML email
-            msg.attach(MIMEText(body, "html"))
+        # Always wrap in HTML template for brand consistency
+        if "<html>" in body.lower() and "<!DOCTYPE" in body:
+            # Already a full HTML document
+            html_body = body
         else:
-            # Plain text email
-            msg.attach(MIMEText(body, "plain"))
+            # Wrap in Nova branded HTML template
+            html_body = self._wrap_in_html_template(body, subject)
+
+        # Attach both plain text and HTML versions
+        plain_body = body if not ("<html>" in body.lower() or "<p>" in body.lower()) else body
+        msg.attach(MIMEText(plain_body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
 
         # Send email
         try:

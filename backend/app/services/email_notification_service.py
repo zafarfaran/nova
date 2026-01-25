@@ -64,12 +64,12 @@ class EmailNotificationService:
             "entity_type": client.entity_type.value if client.entity_type else "limited company",
             "onboarding_url": full_url,
             "steps": [
-                "1. Click the link below to access your personalized dashboard",
+                "1. Click the link below to access your Nova dashboard",
                 "2. Review your VAT period and document checklist",
-                "3. Upload required documents (bank statements, invoices, receipts, etc.)",
-                "4. Our AI will automatically validate your documents",
-                "5. Review validation results and make any necessary corrections",
-                "6. Submit for final review when all documents are ready"
+                "3. Upload your documents in bulk - Nova handles hundreds in seconds",
+                "4. Watch Nova's AI automatically validate and categorize everything",
+                "5. Review any flagged items (if any) and make corrections",
+                "6. Submit for final review - done in minutes, not hours"
             ],
             "required_documents": [
                 "Bank statements for the VAT period",
@@ -79,11 +79,12 @@ class EmailNotificationService:
                 "Any other relevant VAT documentation"
             ],
             "benefits": [
-                "Automated document validation using AI",
-                "Real-time compliance checking",
-                "Instant feedback on any issues",
-                "Streamlined VAT return preparation",
-                "Secure document storage"
+                "Process thousands of documents in seconds with Claude AI",
+                "99.9% accuracy with automated validation and compliance checking",
+                "Real-time bank sync and reconciliation",
+                "Smart anomaly detection that catches errors before they happen",
+                "One-click VAT return generation",
+                "Save 95% of your time on VAT compliance"
             ],
             "support_info": "If you have any questions, simply reply to this email or contact our support team.",
         }
@@ -161,7 +162,7 @@ class EmailNotificationService:
             "issues": issues,
             "issue_count": len(issues),
             "vat_period": f"Q{((vat_period.period_start.month - 1) // 3) + 1} {vat_period.period_start.year}" if vat_period.period_start else "current period",
-            "call_to_action": "Please review and re-upload the corrected document.",
+            "call_to_action": "Upload the corrected document and Nova will re-validate it instantly.",
         }
 
         email_request = EmailRequest(
@@ -225,7 +226,7 @@ class EmailNotificationService:
             "rejected_by": rejected_by,
             "rejection_reason": rejection_reason,
             "vat_period": f"Q{((vat_period.period_start.month - 1) // 3) + 1} {vat_period.period_start.year}" if vat_period.period_start else "current period",
-            "call_to_action": "Please upload a corrected version of this document.",
+            "call_to_action": "Upload the corrected document to your Nova dashboard.",
         }
 
         email_request = EmailRequest(
@@ -277,7 +278,7 @@ class EmailNotificationService:
             "missing_items": missing_items,
             "missing_count": len(missing_items),
             "due_date": due_date or "as soon as possible",
-            "call_to_action": "Please upload the missing documents to complete your VAT return.",
+            "call_to_action": "Upload the missing documents and Nova will process them instantly.",
         }
 
         email_request = EmailRequest(
@@ -331,7 +332,7 @@ class EmailNotificationService:
             "period_start": period.period_start.isoformat() if period.period_start else None,
             "period_end": period.period_end.isoformat() if period.period_end else None,
             "due_date": period.due_date.isoformat() if period.due_date else None,
-            "call_to_action": "Please review and approve your VAT return in the portal.",
+            "call_to_action": "Review your VAT return in Nova - ready for submission in one click.",
         }
 
         email_request = EmailRequest(
