@@ -9,6 +9,9 @@ from app.models.client import Client, EntityType
 from app.models.vat_period import VATPeriod, PeriodStatus
 from app.models.bank_connection import BankConnection
 from app.models.checklist_item import ChecklistItem
+from app.models.document import Document, DocumentStatus
+from app.models.evidence import EvidenceItem
+from app.models.validation import ValidationResult, ValidationStatus
 
 
 # Tool definitions for function calling
@@ -66,7 +69,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "get_clients_needing_attention",
-        "description": "Get a list of clients who have missing documents or need follow-up",
+        "description": "Get a list of clients who need attention due to missing documents, validation issues, or review stage",
         "parameters": {
             "type": "object",
             "properties": {},
@@ -307,7 +310,7 @@ class ChatTools:
         }
 
     def _tool_get_clients_needing_attention(self) -> dict[str, Any]:
-        """Get clients with missing documents."""
+        """Get clients with missing documents, validation issues, or in review."""
         clients = list(self.db.query(Client).all())
 
         needs_attention = []
@@ -322,19 +325,133 @@ class ChatTools:
                 .all()
             )
 
+            required_items = list(
+                self.db.query(ChecklistItem)
+                .filter(
+                    ChecklistItem.client_id == client.id,
+                    ChecklistItem.required == True,
+                )
+                .all()
+            )
+            uploaded_items = [i for i in required_items if i.status == "uploaded"]
+
+            latest_period = (
+                self.db.query(VATPeriod)
+                .filter(VATPeriod.client_id == client.id)
+                .order_by(VATPeriod.period_end.desc())
+                .first()
+            )
+
+            documents_required = len(required_items)
+            documents_uploaded = len(uploaded_items)
+            if documents_required == 0 and latest_period:
+                evidence_items = list(
+                    self.db.query(EvidenceItem)
+                    .filter(EvidenceItem.vat_period_id == latest_period.id)
+                    .all()
+                )
+                documents_required = sum(item.expected_count for item in evidence_items)
+                documents_uploaded = sum(item.received_count for item in evidence_items)
+
+            validation_issue_count = 0
+            pending_review_count = 0
+            failed_document_count = 0
+            has_failed_validations = False
+            has_pending_reviews = False
+
+            if latest_period:
+                validation_rows = list(
+                    self.db.query(
+                        Document.id,
+                        ValidationResult.status,
+                        ValidationResult.review_action,
+                    )
+                    .join(ValidationResult, ValidationResult.document_id == Document.id)
+                    .join(EvidenceItem, Document.evidence_item_id == EvidenceItem.id)
+                    .filter(
+                        EvidenceItem.vat_period_id == latest_period.id,
+                        ValidationResult.status.in_([
+                            ValidationStatus.FAILED,
+                            ValidationStatus.WARNING,
+                        ]),
+                    )
+                    .all()
+                )
+
+                validation_doc_ids: set[int] = set()
+                pending_review_doc_ids: set[int] = set()
+                for doc_id, status, review_action in validation_rows:
+                    validation_doc_ids.add(doc_id)
+                    if review_action is None:
+                        pending_review_doc_ids.add(doc_id)
+                    if status == ValidationStatus.FAILED:
+                        has_failed_validations = True
+
+                failed_doc_ids = {
+                    doc_id
+                    for (doc_id,) in (
+                        self.db.query(Document.id)
+                        .join(EvidenceItem, Document.evidence_item_id == EvidenceItem.id)
+                        .filter(
+                            EvidenceItem.vat_period_id == latest_period.id,
+                            Document.status == DocumentStatus.FAILED,
+                        )
+                        .all()
+                    )
+                }
+
+                failed_document_count = len(failed_doc_ids)
+                validation_issue_count = len(validation_doc_ids | failed_doc_ids)
+                pending_review_count = len(pending_review_doc_ids)
+
+                if failed_doc_ids:
+                    has_failed_validations = True
+
+            has_pending_reviews = pending_review_count > 0
+
+            bank_connected = (
+                self.db.query(BankConnection)
+                .filter(BankConnection.client_id == client.id, BankConnection.is_active == True)
+                .count()
+                > 0
+            )
+
+            attention_reasons = []
             if checklist_items:
+                attention_reasons.append("missing_documents")
+            if validation_issue_count > 0:
+                attention_reasons.append("validation_issues")
+            if has_pending_reviews:
+                attention_reasons.append("pending_review")
+            if latest_period and latest_period.status == PeriodStatus.UNDER_REVIEW:
+                attention_reasons.append("under_review")
+
+            if attention_reasons:
                 needs_attention.append({
                     "id": client.id,
                     "name": client.name,
                     "email": client.contact_email,
                     "missing_documents": len(checklist_items),
-                    "missing_items": [item.title for item in checklist_items[:3]],  # Show first 3
+                    "missing_items": [item.title for item in checklist_items[:3]],
+                    "documents_required": documents_required,
+                    "documents_uploaded": documents_uploaded,
+                    "has_bank_connection": bank_connected,
+                    "vat_period_status": latest_period.status.value if latest_period else None,
+                    "validation_issue_count": validation_issue_count,
+                    "pending_review_count": pending_review_count,
+                    "has_failed_validations": has_failed_validations,
+                    "has_pending_reviews": has_pending_reviews,
+                    "attention_reasons": attention_reasons,
                 })
 
         return {
             "clients_needing_attention": needs_attention,
             "total": len(needs_attention),
-            "message": f"{len(needs_attention)} client(s) have missing documents" if needs_attention else "All clients are up to date!",
+            "message": (
+                f"{len(needs_attention)} client(s) need attention"
+                if needs_attention
+                else "All clients are up to date!"
+            ),
         }
 
     def _tool_create_client(

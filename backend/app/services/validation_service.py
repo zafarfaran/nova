@@ -16,7 +16,8 @@ from app.core.vat_rules import (
     VALID_VAT_RATES,
     VAT_NUMBER_PATTERN,
 )
-from app.models.document import Document, DocumentStatus
+from app.models.document import Document, DocumentStatus, DocumentType
+from app.utils.bank_statement_tools import reconcile_balances
 from app.models.evidence import EvidenceItem
 from app.models.validation import RuleType, ValidationResult, ValidationStatus
 from app.models.vat_period import VATPeriod
@@ -408,37 +409,37 @@ class ValidationService:
                 message="Balance fields not available for reconciliation check",
             )
 
-        # If we have transaction totals, verify: opening + credits - debits = closing
-        if total_credits is not None and total_debits is not None:
-            try:
-                calc_closing = Decimal(str(opening)) + Decimal(str(total_credits)) - Decimal(str(total_debits))
-                actual_closing = Decimal(str(closing))
-                difference = abs(calc_closing - actual_closing)
+        result = reconcile_balances(
+            opening_balance=opening,
+            closing_balance=closing,
+            total_credits=total_credits,
+            total_debits=total_debits,
+            tolerance=CALCULATION_TOLERANCE,
+        )
 
-                if difference > CALCULATION_TOLERANCE:
-                    return ValidationResult(
-                        document_id=doc.id,
-                        rule_type=RuleType.TOTALS_MATCH,
-                        status=ValidationStatus.FAILED,
-                        message=f"Bank statement balance discrepancy: Expected closing £{calc_closing}, actual £{closing}",
-                        details=f"Opening (£{opening}) + Credits (£{total_credits}) - Debits (£{total_debits}) = £{calc_closing}, but statement shows £{closing}",
-                        expected_value=str(calc_closing),
-                        actual_value=str(closing),
-                        severity="high",
-                        ai_reasoning={
-                            "validator": "BankStatementValidator",
-                            "check": "balance_reconciliation",
-                            "calculation": {
-                                "opening": opening,
-                                "credits": total_credits,
-                                "debits": total_debits,
-                                "expected_closing": float(calc_closing),
-                                "actual_closing": float(actual_closing),
-                            },
-                        },
-                    )
-            except (ValueError, TypeError):
-                pass
+        if result["ok"] is False:
+            expected = result["expected_closing"]
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.TOTALS_MATCH,
+                status=ValidationStatus.FAILED,
+                message=f"Bank statement balance discrepancy: Expected closing £{expected}, actual £{closing}",
+                details=f"Opening (£{opening}) + Credits (£{total_credits}) - Debits (£{total_debits}) = £{expected}, but statement shows £{closing}",
+                expected_value=str(expected),
+                actual_value=str(closing),
+                severity="high",
+                ai_reasoning={
+                    "validator": "BankStatementValidator",
+                    "check": "balance_reconciliation",
+                    "calculation": {
+                        "opening": opening,
+                        "credits": total_credits,
+                        "debits": total_debits,
+                        "expected_closing": float(expected),
+                        "actual_closing": float(result["closing"]) if result["closing"] is not None else None,
+                    },
+                },
+            )
 
         return ValidationResult(
             document_id=doc.id,
@@ -644,8 +645,102 @@ class ValidationService:
         results.append(self._validate_payroll_tax_code(doc))
         results.append(self._validate_payroll_calculations(doc))
         results.append(self._validate_payroll_ni_contributions(doc))
+        results.append(self._validate_payroll_bank_account_match(doc))
 
         return results
+
+    def _validate_payroll_bank_account_match(self, doc: Document) -> ValidationResult:
+        """Validate payroll employee name matches bank account holder name."""
+        extracted = doc.extracted_data or {}
+        employee_name = (
+            extracted.get("employee_name")
+            or extracted.get("employee_full_name")
+            or extracted.get("employee")
+        )
+
+        if not employee_name:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="No employee name found to match against bank account",
+            )
+
+        if not doc.evidence_item_id:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="Payroll document not linked to a VAT period",
+            )
+
+        evidence_item = self.db.get(EvidenceItem, doc.evidence_item_id)
+        if not evidence_item:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="Evidence item not found for payroll document",
+            )
+
+        stmt = (
+            select(Document)
+            .join(EvidenceItem, Document.evidence_item_id == EvidenceItem.id)
+            .where(
+                EvidenceItem.vat_period_id == evidence_item.vat_period_id,
+                Document.document_type == DocumentType.BANK_STATEMENT,
+            )
+            .order_by(Document.updated_at.desc())
+        )
+        bank_doc = self.db.scalars(stmt).first()
+        if not bank_doc or not bank_doc.extracted_data:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="No bank statement data found for this VAT period",
+            )
+
+        bank_data = bank_doc.extracted_data or {}
+        account_holder = (
+            bank_data.get("account_holder_name")
+            or bank_data.get("account_name")
+            or (bank_data.get("account_details") or {}).get("account_name")
+        )
+
+        if not account_holder:
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
+                status=ValidationStatus.SKIPPED,
+                message="Bank statement missing account holder name",
+            )
+
+        if self._names_match(employee_name, account_holder):
+            return ValidationResult(
+                document_id=doc.id,
+                rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
+                status=ValidationStatus.PASSED,
+                message="Payslip employee name matches bank account holder",
+            )
+
+        return ValidationResult(
+            document_id=doc.id,
+            rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
+            status=ValidationStatus.WARNING,
+            message="Payslip employee name does not match bank account holder",
+            details=f"Employee '{employee_name}' vs account holder '{account_holder}'",
+            field_name="account_holder_name",
+            expected_value=str(employee_name),
+            actual_value=str(account_holder),
+            severity="medium",
+            ai_reasoning={
+                "validator": "PayrollValidator",
+                "check": "employee_account_match",
+                "employee_name": employee_name,
+                "account_holder_name": account_holder,
+            },
+        )
 
     def _validate_payroll_required_fields(self, doc: Document) -> ValidationResult:
         """Validate required fields for payroll documents."""
@@ -1523,6 +1618,24 @@ class ValidationService:
             expected_value=f"{period.period_start} - {period.period_end}",
             actual_value=str(doc.invoice_date),
         )
+
+    def _normalize_name(self, name: str | None) -> list[str]:
+        if not name:
+            return []
+        cleaned = re.sub(r"[^a-z0-9\s]", " ", str(name).lower())
+        tokens = [t for t in cleaned.split() if t]
+        titles = {"mr", "mrs", "ms", "miss", "dr", "sir", "madam", "prof"}
+        return [t for t in tokens if t not in titles]
+
+    def _names_match(self, name_a: str | None, name_b: str | None) -> bool:
+        tokens_a = set(self._normalize_name(name_a))
+        tokens_b = set(self._normalize_name(name_b))
+        if not tokens_a or not tokens_b:
+            return False
+        if tokens_a.issubset(tokens_b) or tokens_b.issubset(tokens_a):
+            return True
+        common = tokens_a & tokens_b
+        return len(common) >= 2
 
     def _validate_totals_match(self, doc: Document) -> ValidationResult:
         """Validate that net + VAT = gross."""

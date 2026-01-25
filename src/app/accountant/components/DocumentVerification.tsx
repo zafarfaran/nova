@@ -14,7 +14,8 @@ export type RuleType =
     | "duplicate_detection"
     | "ai_anomaly"
     | "currency_valid"
-    | "supplier_valid";
+    | "supplier_valid"
+    | "ACCOUNT_HOLDER_MATCH";
 
 // Validation status
 export type ValidationStatus = "passed" | "failed" | "warning" | "skipped" | "pending";
@@ -64,6 +65,7 @@ const ruleLabels: Record<RuleType, string> = {
     ai_anomaly: "AI Anomaly Check",
     currency_valid: "Currency Valid",
     supplier_valid: "Supplier Valid",
+    ACCOUNT_HOLDER_MATCH: "Account Holder Match",
 };
 
 // Status colors
@@ -153,10 +155,19 @@ function SpinnerIcon() {
 }
 
 // Single document verification item
-function DocumentItem({ doc }: { doc: DocumentVerificationData }) {
+function DocumentItem({
+    doc,
+    onReprocess,
+    isReprocessing,
+}: {
+    doc: DocumentVerificationData;
+    onReprocess?: (docId: string) => void;
+    isReprocessing?: boolean;
+}) {
     const [expanded, setExpanded] = useState(false);
 
     const isNotProvided = doc.status === "not_provided";
+    const canReprocess = doc.status === "failed" || doc.status === "processing";
     const passed = doc.validationResults.filter((r) => r.status === "passed").length;
     const failed = doc.validationResults.filter((r) => r.status === "failed").length;
     const warnings = doc.validationResults.filter((r) => r.status === "warning").length;
@@ -183,9 +194,17 @@ function DocumentItem({ doc }: { doc: DocumentVerificationData }) {
 
     return (
         <div className="border border-[#DFE1E6] rounded overflow-hidden">
-            <button
+            <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setExpanded(!expanded)}
-                className="w-full flex items-center gap-3 px-3 py-2 bg-[#FAFBFC] hover:bg-[#F4F5F7] transition-colors text-left"
+                onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setExpanded((prev) => !prev);
+                    }
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2 bg-[#FAFBFC] hover:bg-[#F4F5F7] transition-colors text-left cursor-pointer"
             >
                 <ChevronIcon expanded={expanded} />
                 <div className="flex-1 min-w-0">
@@ -209,8 +228,21 @@ function DocumentItem({ doc }: { doc: DocumentVerificationData }) {
                         </span>
                     )}
                     <StatusBadge status={doc.status} type="document" />
+                    {canReprocess && onReprocess && (
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onReprocess(doc.id);
+                            }}
+                            disabled={isReprocessing}
+                            className="ml-1 text-[10px] font-semibold text-[#5243AA] hover:text-[#403294] transition-colors disabled:opacity-50"
+                        >
+                            {isReprocessing ? "Reprocessing..." : "Reprocess"}
+                        </button>
+                    )}
                 </div>
-            </button>
+            </div>
 
             {expanded && doc.validationResults.length > 0 && (
                 <div className="border-t border-[#DFE1E6] bg-white">
@@ -373,6 +405,96 @@ async function fetchVerificationData(clientId: string): Promise<{
     }
 }
 
+async function runExtraction(periodId: number): Promise<{ success: boolean; message: string; queuedCount: number }> {
+    try {
+        // Call Python backend to extract all pending documents
+        const response = await fetch(`${API_BASE_URL}/api/v1/documents/process-all/${periodId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                message: errorData.message || errorData.detail || `Extraction failed (${response.status})`,
+                queuedCount: 0,
+            };
+        }
+
+        const result = await response.json();
+        return {
+            success: true,
+            message: result.message || "Extraction started",
+            queuedCount: result.queued_count || 0,
+        };
+    } catch (error) {
+        console.error("Error running extraction:", error);
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : "Failed to connect to extraction service",
+            queuedCount: 0,
+        };
+    }
+}
+
+async function reprocessStuckDocuments(olderThanMinutes: number): Promise<{ success: boolean; message: string; requeuedCount: number }> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/documents/reprocess-stuck`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ older_than_minutes: olderThanMinutes, requeue: true }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                message: errorData.message || errorData.detail || `Reprocess failed (${response.status})`,
+                requeuedCount: 0,
+            };
+        }
+
+        const result = await response.json();
+        return {
+            success: true,
+            message: "Reprocess started",
+            requeuedCount: result.requeued_count || 0,
+        };
+    } catch (error) {
+        console.error("Error reprocessing stuck documents:", error);
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : "Failed to connect to processing service",
+            requeuedCount: 0,
+        };
+    }
+}
+
+async function reprocessDocument(docId: string): Promise<{ success: boolean; message: string }> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/documents/${docId}/process?force=true`, {
+            method: "POST",
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                message: errorData.message || errorData.detail || `Reprocess failed (${response.status})`,
+            };
+        }
+
+        return { success: true, message: "Reprocess queued" };
+    } catch (error) {
+        console.error("Error reprocessing document:", error);
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : "Failed to connect to processing service",
+        };
+    }
+}
+
 async function runValidation(periodId: number): Promise<{ success: boolean; message: string }> {
     try {
         // Call Python backend to run validation for the VAT period
@@ -422,6 +544,9 @@ export function DocumentVerification({
     const [periodId, setPeriodId] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
+    const [isExtracting, setIsExtracting] = useState(false);
+    const [isReprocessing, setIsReprocessing] = useState(false);
+    const [reprocessingDocId, setReprocessingDocId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -459,6 +584,78 @@ export function DocumentVerification({
         fetchData();
     }, [fetchData]);
 
+    // Run extraction handler
+    const handleRunExtraction = async () => {
+        if (!periodId) {
+            setError("No VAT period found for this client");
+            return;
+        }
+
+        const pendingDocs = documents.filter(d => d.status === "pending");
+        if (pendingDocs.length === 0) {
+            setError("No pending documents to extract. Documents may already be processed.");
+            return;
+        }
+
+        setIsExtracting(true);
+        setError(null);
+        setStatusMessage(`Starting extraction for ${pendingDocs.length} document(s)...`);
+
+        const result = await runExtraction(periodId);
+
+        if (!result.success) {
+            setError(result.message);
+            setStatusMessage(null);
+            setIsExtracting(false);
+            return;
+        }
+
+        setStatusMessage(`Extracting ${result.queuedCount} document(s)...`);
+
+        // Poll for extraction completion
+        let attempts = 0;
+        const maxAttempts = 30; // 60 seconds max
+
+        const pollForExtraction = async () => {
+            attempts++;
+
+            try {
+                const data = await fetchVerificationData(clientId!);
+                setDocuments(data.documents);
+                setSummary(data.summary);
+
+                const stillPending = data.documents.filter(
+                    d => d.status === "pending" || d.status === "processing"
+                ).length;
+
+                const extractedCount = data.documents.filter(d => d.status === "extracted").length;
+
+                setStatusMessage(`Extracting... ${extractedCount} extracted, ${stillPending} remaining`);
+
+                if (stillPending === 0 || attempts >= maxAttempts) {
+                    setIsExtracting(false);
+                    if (stillPending === 0) {
+                        setStatusMessage(`Extraction complete! ${extractedCount} document(s) ready for validation.`);
+                        setTimeout(() => setStatusMessage(null), 3000);
+                    } else {
+                        setStatusMessage("Extraction still processing in background. Click refresh to check status.");
+                        setTimeout(() => setStatusMessage(null), 5000);
+                    }
+                    return;
+                }
+
+                setTimeout(pollForExtraction, 2000);
+            } catch (err) {
+                console.error("Error polling extraction status:", err);
+                setIsExtracting(false);
+                setStatusMessage(null);
+                setError("Failed to check extraction status");
+            }
+        };
+
+        setTimeout(pollForExtraction, 2000);
+    };
+
     // Run validation handler with polling
     const handleRunValidation = async () => {
         if (!periodId) {
@@ -470,12 +667,22 @@ export function DocumentVerification({
         const providedDocs = documents.filter(d => d.status !== "not_provided");
         const notProvidedCount = documents.filter(d => d.status === "not_provided").length;
 
+        // Check if there are pending documents that need extraction first
+        const pendingDocs = providedDocs.filter(d => d.status === "pending");
+        if (pendingDocs.length > 0) {
+            // Auto-trigger extraction first
+            setStatusMessage(`${pendingDocs.length} document(s) need extraction first. Starting extraction...`);
+            await handleRunExtraction();
+            // After extraction completes, the user can click Run All again
+            return;
+        }
+
         // Check if there are documents ready to validate (status = extracted)
         const extractedDocs = providedDocs.filter(d => d.status === "extracted");
         if (extractedDocs.length === 0) {
-            const pendingDocs = providedDocs.filter(d => d.status === "pending" || d.status === "processing");
-            if (pendingDocs.length > 0) {
-                setError(`${pendingDocs.length} document(s) still being processed by AI. Wait for extraction to complete before validating.`);
+            const processingDocs = providedDocs.filter(d => d.status === "processing");
+            if (processingDocs.length > 0) {
+                setError(`${processingDocs.length} document(s) still being processed by AI. Wait for extraction to complete before validating.`);
             } else if (providedDocs.length === 0) {
                 if (notProvidedCount > 0) {
                     setError(`${notProvidedCount} required document(s) not yet uploaded. Upload documents first.`);
@@ -575,6 +782,48 @@ export function DocumentVerification({
         });
     };
 
+    const handleReprocessStuck = async () => {
+        const processingDocs = documents.filter((doc) => doc.status === "processing");
+        if (processingDocs.length === 0) {
+            setError("No processing documents to reprocess.");
+            return;
+        }
+
+        setIsReprocessing(true);
+        setError(null);
+        setStatusMessage(`Reprocessing ${processingDocs.length} document(s) stuck in processing...`);
+
+        const result = await reprocessStuckDocuments(30);
+        if (!result.success) {
+            setError(result.message);
+            setStatusMessage(null);
+            setIsReprocessing(false);
+            return;
+        }
+
+        setStatusMessage(`Reprocess queued for ${result.requeuedCount} document(s).`);
+        await fetchData();
+        setTimeout(() => setStatusMessage(null), 3000);
+        setIsReprocessing(false);
+    };
+
+    const handleReprocessDocument = async (docId: string) => {
+        setReprocessingDocId(docId);
+        setError(null);
+
+        const result = await reprocessDocument(docId);
+        if (!result.success) {
+            setError(result.message);
+            setReprocessingDocId(null);
+            return;
+        }
+
+        setStatusMessage("Reprocess queued.");
+        await fetchData();
+        setTimeout(() => setStatusMessage(null), 2000);
+        setReprocessingDocId(null);
+    };
+
     // Calculate summary if not provided
     const calculatedSummary: VerificationSummary = summary || {
         totalDocuments: documents.length,
@@ -606,7 +855,7 @@ export function DocumentVerification({
                         <>
                             <button
                                 onClick={handleRefresh}
-                                disabled={isRunning || isLoading}
+                                disabled={isRunning || isLoading || isExtracting || isReprocessing}
                                 className="text-[11px] font-medium text-[#5E6C84] hover:text-[#172B4D] transition-colors disabled:opacity-50"
                                 title="Refresh"
                             >
@@ -615,12 +864,30 @@ export function DocumentVerification({
                                 </svg>
                             </button>
                             <button
+                                onClick={handleRunExtraction}
+                                disabled={isRunning || isLoading || isExtracting || isReprocessing}
+                                className="text-[11px] font-medium text-[#6554C0] hover:text-[#5243AA] transition-colors disabled:opacity-50 flex items-center gap-1"
+                                title="Extract data from pending documents"
+                            >
+                                {isExtracting && <SpinnerIcon />}
+                                {isExtracting ? "Extracting..." : "Extract"}
+                            </button>
+                            <button
+                                onClick={handleReprocessStuck}
+                                disabled={isRunning || isLoading || isExtracting || isReprocessing}
+                                className="text-[11px] font-medium text-[#FF991F] hover:text-[#FF8B00] transition-colors disabled:opacity-50 flex items-center gap-1"
+                                title="Reprocess documents stuck in processing"
+                            >
+                                {isReprocessing && <SpinnerIcon />}
+                                {isReprocessing ? "Reprocessing..." : "Reprocess stuck"}
+                            </button>
+                            <button
                                 onClick={handleRunValidation}
-                                disabled={isRunning || isLoading}
+                                disabled={isRunning || isLoading || isExtracting || isReprocessing}
                                 className="text-[11px] font-medium text-[#0052CC] hover:text-[#0747A6] transition-colors disabled:opacity-50 flex items-center gap-1"
                             >
                                 {isRunning && <SpinnerIcon />}
-                                {isRunning ? "Running..." : "Run All"}
+                                {isRunning ? "Validating..." : "Validate"}
                             </button>
                         </>
                     )}
@@ -632,9 +899,11 @@ export function DocumentVerification({
                 <div className={`mb-3 p-2 rounded text-[11px] flex items-center gap-2 ${
                     statusMessage.includes("complete")
                         ? "bg-[#E3FCEF] border border-[#ABF5D1] text-[#006644]"
+                        : statusMessage.includes("Extracting")
+                        ? "bg-[#EAE6FF] border border-[#C0B6F2] text-[#5243AA]"
                         : "bg-[#DEEBFF] border border-[#B3D4FF] text-[#0747A6]"
                 }`}>
-                    {isRunning && <SpinnerIcon />}
+                    {(isRunning || isExtracting) && <SpinnerIcon />}
                     {statusMessage.includes("complete") && (
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -683,7 +952,12 @@ export function DocumentVerification({
             {!isLoading && documents.length > 0 && (
                 <div className="space-y-2">
                     {documents.map((doc) => (
-                        <DocumentItem key={doc.id} doc={doc} />
+                        <DocumentItem
+                            key={doc.id}
+                            doc={doc}
+                            onReprocess={handleReprocessDocument}
+                            isReprocessing={reprocessingDocId === doc.id}
+                        />
                     ))}
                 </div>
             )}
@@ -744,7 +1018,7 @@ export function DocumentVerification({
                         </div>
                     </div>
                     <p className="text-[9px] text-[#5E6C84] mt-2 italic">
-                        Only "Extracted" documents can be validated. Documents must be processed by AI first.
+                        Click "Extract" to process pending documents with AI, then "Validate" to run compliance checks.
                     </p>
                 </div>
             )}

@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .base import Anomaly, BaseDocumentAgent, Severity, VerificationResult
+from app.utils.bank_statement_tools import reconcile_balances
 
 
 class BankStatementVerificationAgent(BaseDocumentAgent):
@@ -176,36 +177,37 @@ Respond with a JSON object in this exact format:
         anomalies = []
 
         try:
-            opening = self._to_decimal(data.get("opening_balance"))
-            closing = self._to_decimal(data.get("closing_balance"))
-            total_credits = self._to_decimal(data.get("total_credits", 0))
-            total_debits = self._to_decimal(data.get("total_debits", 0))
+            result = reconcile_balances(
+                opening_balance=data.get("opening_balance"),
+                closing_balance=data.get("closing_balance"),
+                total_credits=data.get("total_credits"),
+                total_debits=data.get("total_debits"),
+            )
+            if result["ok"] is False:
+                anomalies.append(Anomaly(
+                    field="closing_balance",
+                    issue=(
+                        "Balance reconciliation failed: Opening "
+                        f"({result['opening']}) + Credits ({result['credits']}) - "
+                        f"Debits ({result['debits']}) = {result['expected_closing']}, "
+                        f"but Closing shows {result['closing']}"
+                    ),
+                    severity=Severity.HIGH,
+                    suggestion="The statement balances don't reconcile. This may indicate missing transactions or calculation errors.",
+                    expected_value=str(result["expected_closing"]),
+                    actual_value=str(result["closing"]),
+                ))
 
-            if opening is not None and closing is not None:
-                # If we have transaction totals, verify
-                if total_credits is not None and total_debits is not None:
-                    expected_closing = opening + total_credits - total_debits
-                    difference = abs(expected_closing - closing)
-
-                    if difference > Decimal("0.01"):
-                        anomalies.append(Anomaly(
-                            field="closing_balance",
-                            issue=f"Balance reconciliation failed: Opening ({opening}) + Credits ({total_credits}) - Debits ({total_debits}) = {expected_closing}, but Closing shows {closing}",
-                            severity=Severity.HIGH,
-                            suggestion="The statement balances don't reconcile. This may indicate missing transactions or calculation errors.",
-                            expected_value=str(expected_closing),
-                            actual_value=str(closing),
-                        ))
-
-                # Check for negative closing balance (unusual for most business accounts)
-                if closing < 0:
-                    anomalies.append(Anomaly(
-                        field="closing_balance",
-                        issue="Closing balance is negative (overdrawn)",
-                        severity=Severity.LOW,
-                        suggestion="Verify if overdraft is expected. May affect VAT period cash accounting.",
-                        actual_value=str(closing),
-                    ))
+            # Check for negative closing balance (unusual for most business accounts)
+            closing = result.get("closing")
+            if closing is not None and closing < 0:
+                anomalies.append(Anomaly(
+                    field="closing_balance",
+                    issue="Closing balance is negative (overdrawn)",
+                    severity=Severity.LOW,
+                    suggestion="Verify if overdraft is expected. May affect VAT period cash accounting.",
+                    actual_value=str(closing),
+                ))
 
         except (InvalidOperation, TypeError, ValueError):
             pass

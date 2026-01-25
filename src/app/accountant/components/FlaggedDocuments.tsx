@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 
 // Types for flagged documents
 export type Severity = "high" | "medium" | "low";
@@ -801,6 +801,21 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
         doc.validationResults.some((r) => !r.reviewAction)
     );
 
+    const groupedByClient = useMemo(() => {
+        const map = new Map<string, { clientId: string; clientName: string; documents: FlaggedDocument[] }>();
+        documentsWithPending.forEach((doc) => {
+            if (!map.has(doc.clientId)) {
+                map.set(doc.clientId, {
+                    clientId: doc.clientId,
+                    clientName: doc.clientName,
+                    documents: [],
+                });
+            }
+            map.get(doc.clientId)!.documents.push(doc);
+        });
+        return Array.from(map.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
+    }, [documentsWithPending]);
+
     // If no flagged documents, show empty state
     if (!isLoading && documents.length === 0) {
         return (
@@ -882,17 +897,44 @@ export function FlaggedDocuments({ initialDocuments, onRefresh }: FlaggedDocumen
                 {/* Summary */}
                 {!isLoading && summary.total > 0 && <SummaryHeader summary={summary} />}
 
-                {/* Document list */}
-                {!isLoading && documentsWithPending.length > 0 && (
-                    <div className="space-y-3">
-                        {documentsWithPending.map((doc) => (
-                            <FlaggedDocumentCard
-                                key={doc.id}
-                                document={doc}
-                                onReviewAction={handleReviewAction}
-                                processingResultId={processingResultId}
-                            />
-                        ))}
+                {/* Document list grouped by client */}
+                {!isLoading && groupedByClient.length > 0 && (
+                    <div className="space-y-4">
+                        {groupedByClient.map((group) => {
+                            const pendingCount = group.documents.reduce(
+                                (count, doc) => count + doc.validationResults.filter((r) => !r.reviewAction).length,
+                                0
+                            );
+                            return (
+                                <div key={group.clientId} className="rounded border border-[#DFE1E6]">
+                                    <div className="flex items-center justify-between px-3 py-2 bg-[#FAFBFC] border-b border-[#DFE1E6]">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[12px] font-semibold text-[#172B4D]">
+                                                {group.clientName}
+                                            </span>
+                                            <span className="text-[10px] text-[#5E6C84]">
+                                                {group.documents.length} doc{group.documents.length !== 1 ? "s" : ""}
+                                            </span>
+                                        </div>
+                                        {pendingCount > 0 && (
+                                            <span className="px-1.5 py-0.5 bg-[#DEEBFF] text-[#0052CC] text-[9px] font-bold rounded">
+                                                {pendingCount} pending
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="p-3 space-y-3">
+                                        {group.documents.map((doc) => (
+                                            <FlaggedDocumentCard
+                                                key={doc.id}
+                                                document={doc}
+                                                onReviewAction={handleReviewAction}
+                                                processingResultId={processingResultId}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 

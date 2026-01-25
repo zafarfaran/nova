@@ -11,7 +11,7 @@ from app.config import get_settings
 settings = get_settings()
 
 # Build engine kwargs based on database type
-engine_kwargs: dict = {"echo": settings.debug}
+engine_kwargs: dict = {"echo": settings.debug and not settings.is_sqlite}
 
 if settings.is_sqlite:
     # SQLite-specific settings

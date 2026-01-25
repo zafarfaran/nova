@@ -4,7 +4,7 @@ import { db } from "~/server/db";
 
 const UpdateSchema = z.object({
     status: z.string().optional(),
-    uploadedFileUrl: z.string().optional(),
+    uploadedFileUrl: z.string().nullable().optional(),
 });
 
 export async function PATCH(

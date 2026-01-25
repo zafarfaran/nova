@@ -1,10 +1,20 @@
 """API routes for Document management."""
 
+import hashlib
+import logging
+from datetime import datetime, timedelta
+from typing import Optional
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models.document import Document, DocumentStatus
+from app.models.evidence import EvidenceItem
+from app.models.vat_period import VATPeriod
 from app.schemas.document import (
     DocumentList,
     DocumentResponse,
@@ -17,7 +27,259 @@ from app.services.document_service import DocumentService
 from app.services.evidence_service import EvidenceService
 from app.tasks.document_tasks import run_process_document
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+# Schema for sync request
+class DocumentSyncRequest(BaseModel):
+    """Request to sync a document from external storage (e.g., UploadThing)."""
+    filename: str
+    external_url: str
+    file_size: Optional[int] = None
+    content_type: Optional[str] = None
+    client_id: int
+    checklist_item_id: Optional[int] = None
+    document_type: Optional[str] = None  # invoice, receipt, bank_statement, payroll, etc.
+
+
+class DocumentSyncResponse(BaseModel):
+    """Response from document sync."""
+    success: bool
+    document_id: Optional[int] = None
+    message: str
+
+
+class BatchProcessRequest(BaseModel):
+    """Request to process multiple documents."""
+    document_ids: Optional[list[int]] = None
+    force: bool = False
+
+
+class BatchProcessResponse(BaseModel):
+    """Response from batch processing."""
+    success: bool
+    queued_count: int
+    message: str
+
+
+class ReprocessStuckRequest(BaseModel):
+    """Request to reprocess stuck documents."""
+
+    older_than_minutes: int = 30
+    requeue: bool = True
+
+
+class ReprocessStuckResponse(BaseModel):
+    """Response for reprocessing stuck documents."""
+
+    success: bool
+    stuck_count: int
+    requeued_count: int
+    failed_count: int
+    document_ids: list[int]
+
+
+@router.post("/sync", response_model=DocumentSyncResponse)
+async def sync_document(
+    request: DocumentSyncRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> DocumentSyncResponse:
+    """Sync a document from external storage (UploadThing) to backend.
+
+    This endpoint:
+    1. Creates a document record with the external URL as s3_key
+    2. Queues the document for AI extraction
+    """
+    logger.info(f"Syncing document: {request.filename} for client {request.client_id}")
+
+    # Find or create an evidence item for this client
+    # First, find the client's active VAT period
+    stmt = select(VATPeriod).where(VATPeriod.client_id == request.client_id).order_by(VATPeriod.id.desc())
+    period = db.scalars(stmt).first()
+
+    if not period:
+        logger.warning(f"No VAT period found for client {request.client_id}")
+        return DocumentSyncResponse(
+            success=False,
+            message="No VAT period found for this client. Create a VAT period first."
+        )
+
+    # Find or create evidence item (use OTHER category for now)
+    from app.models.evidence import EvidenceCategory, EvidenceStatus
+
+    stmt = select(EvidenceItem).where(
+        EvidenceItem.vat_period_id == period.id,
+        EvidenceItem.category == EvidenceCategory.OTHER
+    )
+    evidence_item = db.scalars(stmt).first()
+
+    if not evidence_item:
+        evidence_item = EvidenceItem(
+            vat_period_id=period.id,
+            category=EvidenceCategory.OTHER,
+            description="Documents synced from upload",
+            status=EvidenceStatus.PENDING,
+            expected_count=0,
+            received_count=0,
+        )
+        db.add(evidence_item)
+        db.commit()
+        db.refresh(evidence_item)
+        logger.info(f"Created evidence item {evidence_item.id} for synced documents")
+
+    # Extract file key from URL (UploadThing URLs are like https://utfs.io/f/{key})
+    s3_key = request.external_url
+    if "utfs.io/f/" in request.external_url:
+        s3_key = request.external_url.split("utfs.io/f/")[-1]
+
+    # Check for duplicate by URL
+    stmt = select(Document).where(Document.s3_key == s3_key)
+    existing = db.scalars(stmt).first()
+    if existing:
+        logger.info(f"Document already exists: {existing.id}")
+        return DocumentSyncResponse(
+            success=True,
+            document_id=existing.id,
+            message="Document already synced"
+        )
+
+    # Create file hash from URL (since we don't have the actual file content)
+    file_hash = hashlib.sha256(request.external_url.encode()).hexdigest()
+
+    # Map document type string to enum if provided
+    doc_type = None
+    if request.document_type:
+        from app.models.document import DocumentType
+        type_mapping = {
+            "invoice": DocumentType.INVOICE,
+            "receipt": DocumentType.RECEIPT,
+            "bank_statement": DocumentType.BANK_STATEMENT,
+            "payroll": DocumentType.PAYROLL if hasattr(DocumentType, "PAYROLL") else DocumentType.OTHER,
+            "contract": DocumentType.CONTRACT,
+            "vat_certificate": DocumentType.VAT_CERTIFICATE,
+            "credit_note": DocumentType.CREDIT_NOTE,
+            "debit_note": DocumentType.DEBIT_NOTE,
+            "other": DocumentType.OTHER,
+        }
+        doc_type = type_mapping.get(request.document_type.lower(), DocumentType.OTHER)
+
+    # Create document record
+    doc = Document(
+        evidence_item_id=evidence_item.id,
+        filename=request.filename,
+        s3_key=s3_key,
+        file_hash=file_hash,
+        content_type=request.content_type or "application/pdf",
+        file_size=request.file_size,
+        status=DocumentStatus.PENDING,
+        document_type=doc_type,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    logger.info(f"Created document {doc.id} for {request.filename}")
+
+    # Update evidence item count
+    evidence_item.received_count += 1
+    db.commit()
+
+    # Queue for AI extraction
+    background_tasks.add_task(run_process_document, doc.id)
+    logger.info(f"Queued document {doc.id} for extraction")
+
+    return DocumentSyncResponse(
+        success=True,
+        document_id=doc.id,
+        message="Document synced and queued for extraction"
+    )
+
+
+@router.post("/process-all/{period_id}", response_model=BatchProcessResponse)
+async def process_all_documents(
+    period_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    force: bool = False,
+) -> BatchProcessResponse:
+    """Process all pending documents for a VAT period.
+
+    This triggers AI extraction for all documents that haven't been processed yet.
+    """
+    logger.info(f"Processing all documents for period {period_id}")
+
+    # Get all documents for this period that need processing
+    stmt = (
+        select(Document)
+        .join(EvidenceItem)
+        .where(EvidenceItem.vat_period_id == period_id)
+    )
+
+    if not force:
+        stmt = stmt.where(Document.status == DocumentStatus.PENDING)
+
+    docs = list(db.scalars(stmt).all())
+
+    if not docs:
+        return BatchProcessResponse(
+            success=True,
+            queued_count=0,
+            message="No documents to process"
+        )
+
+    # Queue each document for processing
+    for doc in docs:
+        doc.status = DocumentStatus.PROCESSING
+        background_tasks.add_task(run_process_document, doc.id)
+
+    db.commit()
+    logger.info(f"Queued {len(docs)} documents for processing")
+
+    return BatchProcessResponse(
+        success=True,
+        queued_count=len(docs),
+        message=f"Queued {len(docs)} document(s) for extraction"
+    )
+
+
+@router.post("/reprocess-stuck", response_model=ReprocessStuckResponse)
+async def reprocess_stuck_documents(
+    request: ReprocessStuckRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> ReprocessStuckResponse:
+    """Reprocess documents stuck in PROCESSING beyond a threshold."""
+    cutoff = datetime.utcnow() - timedelta(minutes=request.older_than_minutes)
+    stmt = select(Document).where(
+        Document.status == DocumentStatus.PROCESSING,
+        Document.updated_at < cutoff,
+    )
+    stuck_docs = list(db.scalars(stmt).all())
+
+    for doc in stuck_docs:
+        doc.processing_error = (
+            f"Processing stuck for > {request.older_than_minutes} minutes"
+        )
+        doc.status = (
+            DocumentStatus.PENDING if request.requeue else DocumentStatus.FAILED
+        )
+
+    db.commit()
+
+    if request.requeue:
+        for doc in stuck_docs:
+            background_tasks.add_task(run_process_document, doc.id)
+
+    return ReprocessStuckResponse(
+        success=True,
+        stuck_count=len(stuck_docs),
+        requeued_count=len(stuck_docs) if request.requeue else 0,
+        failed_count=len(stuck_docs) if not request.requeue else 0,
+        document_ids=[doc.id for doc in stuck_docs],
+    )
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)

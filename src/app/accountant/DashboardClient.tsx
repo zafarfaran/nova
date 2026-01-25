@@ -26,6 +26,7 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
     const [showAIChat, setShowAIChat] = useState(false);
     const [activeNav, setActiveNav] = useState("dashboard");
     const [searchQuery, setSearchQuery] = useState("");
+    const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
 
     // Refresh dashboard data from server
     const refreshDashboard = useCallback(() => {
@@ -98,6 +99,36 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
         console.log("Add new client");
     };
 
+    const handleDeleteClient = async (clientId: string) => {
+        const confirmed = window.confirm("Are you sure you want to delete this client?");
+        if (!confirmed) return;
+        if (deletingClientId) return;
+
+        setDeletingClientId(clientId);
+        try {
+            const response = await fetch(`/api/clients/${clientId}`, {
+                method: "DELETE",
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                alert(error.error || "Failed to delete client. Please try again.");
+                return;
+            }
+
+            if (selectedClient?.id === clientId) {
+                handleCloseDetail();
+            }
+
+            router.refresh();
+        } catch (error) {
+            console.error("Delete client error:", error);
+            alert("Failed to delete client. Please try again.");
+        } finally {
+            setDeletingClientId(null);
+        }
+    };
+
     return (
         <div className="flex h-screen bg-[#F4F5F7] overflow-hidden">
             {/* Sidebar */}
@@ -147,6 +178,7 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                                     data={filteredClients}
                                     onRowClick={handleRowClick}
                                     selectedId={selectedClient?.id}
+                                onDeleteClient={handleDeleteClient}
                                 />
                             </div>
                         </>
@@ -166,6 +198,7 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                                 data={filteredClients}
                                 onRowClick={handleRowClick}
                                 selectedId={selectedClient?.id}
+                            onDeleteClient={handleDeleteClient}
                             />
                         </div>
                     )}

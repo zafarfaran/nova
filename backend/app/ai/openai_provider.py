@@ -2,6 +2,7 @@
 
 import base64
 import json
+import logging
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -22,6 +23,7 @@ class OpenAIProvider(AIProvider):
         settings = get_settings()
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = "gpt-4o"  # Vision-capable model
+        self.logger = logging.getLogger(__name__)
 
     async def _analyze_image(self, content: bytes, content_type: str, prompt: str) -> str:
         """Analyze an image using GPT-4 Vision."""
@@ -62,6 +64,12 @@ class OpenAIProvider(AIProvider):
         self, document_content: bytes, content_type: str, filename: str
     ) -> dict[str, Any]:
         """Extract structured data from a document."""
+        self.logger.info(
+            "OpenAI extraction start (filename=%s, content_type=%s, size=%s bytes)",
+            filename,
+            content_type,
+            len(document_content),
+        )
         # First detect document type
         type_response = await self._analyze_image(
             document_content, content_type, DOCUMENT_TYPE_DETECTION_PROMPT
@@ -72,11 +80,13 @@ class OpenAIProvider(AIProvider):
             doc_type = type_data.get("document_type", "invoice")
         except json.JSONDecodeError:
             doc_type = "invoice"
+        self.logger.info("OpenAI detected document type: %s", doc_type)
 
         # Get appropriate extraction prompt
         extraction_prompt = get_extraction_prompt(doc_type)
 
         # Extract data
+        self.logger.info("OpenAI extraction prompt prepared for type=%s", doc_type)
         extraction_response = await self._analyze_image(
             document_content, content_type, extraction_prompt
         )
@@ -84,8 +94,13 @@ class OpenAIProvider(AIProvider):
         try:
             extracted_data = json.loads(extraction_response)
             extracted_data["detected_document_type"] = doc_type
+            self.logger.info(
+                "OpenAI extraction complete (fields=%s)",
+                len(extracted_data),
+            )
             return extracted_data
         except json.JSONDecodeError:
+            self.logger.warning("OpenAI extraction response JSON parse failed")
             return {
                 "error": "Failed to parse extraction response",
                 "raw_response": extraction_response,
@@ -136,3 +151,10 @@ class OpenAIProvider(AIProvider):
         """General text analysis with custom prompt."""
         full_prompt = f"{prompt}\n\nText to analyze:\n{text}"
         return await self._analyze_text(full_prompt)
+
+    async def close(self) -> None:
+        """Close underlying async client."""
+        try:
+            await self.client.close()
+        except Exception:
+            self.logger.warning("Failed to close OpenAI client cleanly", exc_info=True)

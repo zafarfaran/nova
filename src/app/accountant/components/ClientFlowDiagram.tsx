@@ -266,12 +266,12 @@ export function ClientFlowDiagram({
                                 )}
                             </button>
                             <p
-                                className="text-[9px] font-bold tracking-wide mt-2 text-center"
+                                className="text-[8px] sm:text-[9px] font-semibold mt-2 text-center leading-tight break-all px-1"
                                 style={{ color: colors.text }}
                             >
                                 {stage.label}
                             </p>
-                            <p className="text-[9px] text-[#97A0AF] text-center hidden sm:block">
+                            <p className="text-[8px] text-[#97A0AF] text-center hidden sm:block leading-tight break-words px-1">
                                 {stage.description}
                             </p>
                         </div>

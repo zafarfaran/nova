@@ -1,13 +1,35 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { ClientFlowDiagram, getClientStage } from "./components/ClientFlowDiagram";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-interface Message {
+type TextMessage = {
+    id: string;
+    kind: "text";
     role: "user" | "assistant";
     content: string;
-}
+};
+
+type ToolMessage = {
+    id: string;
+    kind: "tool";
+    role: "tool";
+    toolName: string;
+    toolInput?: Record<string, any>;
+    toolResult?: any;
+};
+
+type FormMessage = {
+    id: string;
+    kind: "create_client_form";
+    role: "assistant";
+};
+
+type Message = TextMessage | ToolMessage | FormMessage;
 
 interface AIChatProps {
     clientId?: string;
@@ -23,10 +45,19 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
     const [voiceEnabled, setVoiceEnabled] = useState(false);
     const [currentToolUse, setCurrentToolUse] = useState<string | null>(null);
 
+    const assistantMessageIndexRef = useRef<number | null>(null);
+    const toolInputMapRef = useRef<Map<string, any>>(new Map());
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null);
     const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    const makeId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    const shouldShowCreateClientForm = (text: string) => {
+        return /(create|add|new)\s+(client|user)/i.test(text);
+    };
 
     // Initialize Speech Recognition
     useEffect(() => {
@@ -90,13 +121,17 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
         }
     };
 
-    const sendMessage = async () => {
-        if (!input.trim() || isLoading) return;
+    const sendMessageWithContent = async (content: string) => {
+        if (!content.trim() || isLoading) return;
 
-        const userMessage: Message = { role: "user", content: input };
-        setMessages((prev) => [...prev, userMessage]);
-        const userInput = input;
-        setInput("");
+        const userMessage: Message = { id: makeId(), kind: "text", role: "user", content };
+        const assistantPlaceholder: Message = { id: makeId(), kind: "text", role: "assistant", content: "" };
+
+        setMessages((prev) => {
+            const next = [...prev, userMessage, assistantPlaceholder];
+            assistantMessageIndexRef.current = next.length - 1;
+            return next;
+        });
         setIsLoading(true);
 
         try {
@@ -117,11 +152,13 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     messages: [
-                        ...messages.map((m) => ({
-                            role: m.role,
-                            content: m.content,
-                        })),
-                        { role: "user", content: userInput },
+                        ...messages
+                            .filter((m) => m.kind === "text")
+                            .map((m) => ({
+                                role: m.role,
+                                content: m.content,
+                            })),
+                        { role: "user", content },
                     ],
                     context,
                 }),
@@ -133,8 +170,6 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
             const decoder = new TextDecoder();
             let assistantMessage = "";
             let buffer = "";
-
-            setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
             while (true) {
                 const { done, value } = (await reader?.read()) || {};
@@ -154,20 +189,43 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                             const data = JSON.parse(jsonStr);
 
                             if (data.type === "text" || data.type === "content_block_delta") {
-                                const content = data.content || data.delta?.text || "";
-                                assistantMessage += content;
+                                const deltaText = data.content || data.delta?.text || "";
+                                assistantMessage += deltaText;
                                 setMessages((prev) => {
                                     const newMessages = [...prev];
-                                    newMessages[newMessages.length - 1] = {
-                                        role: "assistant",
-                                        content: assistantMessage,
-                                    };
+                                    const idx = assistantMessageIndexRef.current;
+                                    if (idx !== null && newMessages[idx]?.kind === "text") {
+                                        newMessages[idx] = {
+                                            ...(newMessages[idx] as TextMessage),
+                                            content: assistantMessage,
+                                        };
+                                    }
                                     return newMessages;
                                 });
                             } else if (data.type === "tool_executing" || data.type === "tool_use") {
                                 setCurrentToolUse(data.tool || data.name || "searching");
+                                if (data.tool_call_id) {
+                                    toolInputMapRef.current.set(data.tool_call_id, data.input || {});
+                                }
                             } else if (data.type === "tool_result") {
                                 setCurrentToolUse(null);
+                                const toolInput = data.tool_call_id
+                                    ? toolInputMapRef.current.get(data.tool_call_id)
+                                    : undefined;
+                                if (data.tool_call_id) {
+                                    toolInputMapRef.current.delete(data.tool_call_id);
+                                }
+                                setMessages((prev) => [
+                                    ...prev,
+                                    {
+                                        id: makeId(),
+                                        kind: "tool",
+                                        role: "tool",
+                                        toolName: data.tool || "tool",
+                                        toolInput,
+                                        toolResult: data.result,
+                                    },
+                                ]);
                             } else if (data.type === "message_stop" || data.type === "done") {
                                 if (voiceEnabled && assistantMessage) {
                                     speak(assistantMessage);
@@ -185,14 +243,17 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                 try {
                     const data = JSON.parse(buffer.trim().slice(6));
                     if (data.type === "text" || data.type === "content_block_delta") {
-                        const content = data.content || data.delta?.text || "";
-                        assistantMessage += content;
+                        const deltaText = data.content || data.delta?.text || "";
+                        assistantMessage += deltaText;
                         setMessages((prev) => {
                             const newMessages = [...prev];
-                            newMessages[newMessages.length - 1] = {
-                                role: "assistant",
-                                content: assistantMessage,
-                            };
+                            const idx = assistantMessageIndexRef.current;
+                            if (idx !== null && newMessages[idx]?.kind === "text") {
+                                newMessages[idx] = {
+                                    ...(newMessages[idx] as TextMessage),
+                                    content: assistantMessage,
+                                };
+                            }
                             return newMessages;
                         });
                     }
@@ -205,6 +266,8 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
             setMessages((prev) => [
                 ...prev,
                 {
+                    id: makeId(),
+                    kind: "text",
                     role: "assistant",
                     content: "Sorry, I encountered an error. Please try again.",
                 },
@@ -213,6 +276,32 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
             setIsLoading(false);
             setCurrentToolUse(null);
         }
+    };
+
+    const sendMessage = async () => {
+        if (!input.trim() || isLoading) return;
+
+        const userInput = input;
+        setInput("");
+
+        if (shouldShowCreateClientForm(userInput)) {
+            const userMessage: Message = { id: makeId(), kind: "text", role: "user", content: userInput };
+            const assistantMessage: Message = {
+                id: makeId(),
+                kind: "text",
+                role: "assistant",
+                content: "Love it. Pop the details in this quick form and I’ll set them up ✨",
+            };
+            const formMessage: Message = {
+                id: makeId(),
+                kind: "create_client_form",
+                role: "assistant",
+            };
+            setMessages((prev) => [...prev, userMessage, assistantMessage, formMessage]);
+            return;
+        }
+
+        await sendMessageWithContent(userInput);
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -226,7 +315,302 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
         "Which clients need attention?",
         "VAT returns due this month",
         "Missing documents summary",
+        "Create a new client",
     ];
+
+    const lastMessage = messages[messages.length - 1];
+    const showTypingIndicator =
+        isLoading &&
+        !currentToolUse &&
+        lastMessage?.kind === "text" &&
+        lastMessage.role === "assistant" &&
+        lastMessage.content === "";
+
+    const CreateClientFormCard = ({ onSubmit, onCancel }: { onSubmit: (payload: string) => void; onCancel: () => void }) => {
+        const [name, setName] = useState("");
+        const [email, setEmail] = useState("");
+        const [entityType, setEntityType] = useState("limited_company");
+        const [vatScheme, setVatScheme] = useState("standard");
+        const [vatNumber, setVatNumber] = useState("");
+        const [notes, setNotes] = useState("");
+
+        const handleSubmit = () => {
+            if (!name.trim() || !email.trim()) return;
+            const message = [
+                "Please create a new client with the following details:",
+                `Name: ${name}`,
+                `Email: ${email}`,
+                `Entity type: ${entityType}`,
+                `VAT scheme: ${vatScheme}`,
+                vatNumber ? `VAT number: ${vatNumber}` : null,
+                notes ? `Notes: ${notes}` : null,
+            ]
+                .filter(Boolean)
+                .join("\n");
+
+            onSubmit(message);
+        };
+
+        return (
+            <div className="rounded-lg border border-[#C0B6F2] bg-gradient-to-br from-[#F4F5F7] to-[#EAE6FF] p-4">
+                <div className="flex items-center gap-2 mb-3">
+                    <span className="text-[14px]">✨</span>
+                    <div>
+                        <p className="text-[13px] font-semibold text-[#403294]">New Client Capsule</p>
+                        <p className="text-[11px] text-[#5E6C84]">Drop the details and I’ll handle the rest.</p>
+                    </div>
+                </div>
+                <div className="grid gap-2">
+                    <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Client name"
+                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
+                    />
+                    <input
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Email"
+                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                        <select
+                            value={entityType}
+                            onChange={(e) => setEntityType(e.target.value)}
+                            className="rounded border border-[#DFE1E6] bg-white px-2 py-2 text-[12px] text-[#172B4D]"
+                        >
+                            <option value="sole_trader">Sole Trader</option>
+                            <option value="partnership">Partnership</option>
+                            <option value="llp">LLP</option>
+                            <option value="limited_company">Limited Company</option>
+                            <option value="plc">PLC</option>
+                            <option value="charity">Charity</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <select
+                            value={vatScheme}
+                            onChange={(e) => setVatScheme(e.target.value)}
+                            className="rounded border border-[#DFE1E6] bg-white px-2 py-2 text-[12px] text-[#172B4D]"
+                        >
+                            <option value="standard">Standard</option>
+                            <option value="flat_rate">Flat Rate</option>
+                            <option value="cash_accounting">Cash Accounting</option>
+                            <option value="annual_accounting">Annual Accounting</option>
+                        </select>
+                    </div>
+                    <input
+                        value={vatNumber}
+                        onChange={(e) => setVatNumber(e.target.value)}
+                        placeholder="VAT number (optional)"
+                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
+                    />
+                    <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Notes (optional)"
+                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
+                        rows={2}
+                    />
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleSubmit}
+                            disabled={!name.trim() || !email.trim() || isLoading}
+                            className="rounded bg-[#6554C0] px-3 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
+                        >
+                            Create client
+                        </button>
+                        <button
+                            onClick={onCancel}
+                            className="rounded border border-[#DFE1E6] px-3 py-2 text-[12px] text-[#5E6C84]"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const ToolCard = ({ children }: { children: React.ReactNode }) => (
+        <div className="rounded-xl border border-[#DFE1E6] bg-[#FAFBFC] p-4 shadow-sm">
+            <div className="text-[12px] text-[#172B4D] leading-relaxed">{children}</div>
+        </div>
+    );
+
+    const renderToolResult = (message: ToolMessage) => {
+        const result = message.toolResult || {};
+        if (result.error) {
+            return (
+                <ToolCard>
+                    <p className="text-[12px] font-semibold text-[#BF2600]">Tool error</p>
+                    <p className="text-[11px] text-[#5E6C84]">{result.error}</p>
+                </ToolCard>
+            );
+        }
+
+        if (message.toolName === "create_client") {
+            return (
+                <ToolCard>
+                    <p className="text-[13px] font-semibold text-[#172B4D]">Client created</p>
+                    <p className="text-[12px] text-[#5E6C84]">{result.message}</p>
+                    {result.client && (
+                        <div className="mt-2 text-[12px] text-[#172B4D]">
+                            <div className="font-medium">{result.client.name}</div>
+                            <div className="text-[#5E6C84]">{result.client.email}</div>
+                        </div>
+                    )}
+                    {result.onboarding_link && (
+                        <button
+                            onClick={() => window.open(result.onboarding_link, "_blank")}
+                            className="mt-2 text-[11px] font-semibold text-[#0052CC] hover:text-[#0747A6]"
+                        >
+                            Open onboarding link
+                        </button>
+                    )}
+                </ToolCard>
+            );
+        }
+
+        if (message.toolName === "list_clients" || message.toolName === "search_clients") {
+            const clients = result.clients || [];
+            return (
+                <ToolCard>
+                    <p className="text-[13px] font-semibold text-[#172B4D]">
+                        {result.total ?? clients.length} client{(result.total ?? clients.length) !== 1 ? "s" : ""}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                        {clients.map((client: any) => (
+                            <div key={client.id} className="border border-[#EBECF0] rounded-lg bg-white px-3 py-2">
+                                <div className="text-[12px] text-[#172B4D] font-semibold">{client.name}</div>
+                                <div className="text-[11px] text-[#5E6C84]">{client.email}</div>
+                                <div className="text-[10px] text-[#97A0AF] uppercase tracking-wide">
+                                    {client.entity_type || "entity"} • {client.vat_scheme || "scheme"}
+                                </div>
+                            </div>
+                        ))}
+                        {clients.length === 0 && (
+                            <p className="text-[11px] text-[#5E6C84]">No clients found.</p>
+                        )}
+                    </div>
+                </ToolCard>
+            );
+        }
+
+        if (message.toolName === "get_client_details") {
+            const docs = result.documents || {};
+            const hasBank = result.has_bank_connected || false;
+            const stage = getClientStage({
+                documentsUploaded: docs.uploaded || 0,
+                documentsRequired: docs.total_required || 0,
+                hasBankConnection: hasBank,
+                status: docs.uploaded === docs.total_required ? "complete" : "needs_attention",
+            });
+            return (
+                <ToolCard>
+                    <p className="text-[13px] font-semibold text-[#172B4D]">{result.client?.name}</p>
+                    <p className="text-[11px] text-[#5E6C84]">{result.client?.email}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[12px] text-[#172B4D]">
+                        <div>
+                            Docs: {docs.uploaded}/{docs.total_required}
+                        </div>
+                        <div>Bank: {hasBank ? "Connected" : "Not linked"}</div>
+                    </div>
+                    <div className="mt-3 rounded-lg bg-white p-2">
+                        <ClientFlowDiagram currentStage={stage} variant="horizontal" />
+                    </div>
+                </ToolCard>
+            );
+        }
+
+        if (message.toolName === "get_document_checklist") {
+            const checklist = result.checklist || [];
+            return (
+                <ToolCard>
+                    <p className="text-[13px] font-semibold text-[#172B4D]">
+                        Checklist for {result.client_name}
+                    </p>
+                    <div className="mt-2 space-y-1">
+                        {checklist.map((item: any) => (
+                            <div key={item.id} className="flex items-center justify-between text-[12px] rounded bg-white px-2 py-1">
+                                <span className="text-[#172B4D]">{item.title}</span>
+                                <span className="text-[#5E6C84]">{item.status_icon}</span>
+                            </div>
+                        ))}
+                    </div>
+                </ToolCard>
+            );
+        }
+
+        if (message.toolName === "get_clients_needing_attention") {
+            const clients = result.clients_needing_attention || [];
+            return (
+                <ToolCard>
+                    <p className="text-[13px] font-semibold text-[#172B4D]">{result.message}</p>
+                    <div className="mt-2 space-y-3">
+                        {clients.map((client: any) => {
+                            const stage = getClientStage({
+                                documentsUploaded: client.documents_uploaded || 0,
+                                documentsRequired: client.documents_required || 0,
+                                hasBankConnection: client.has_bank_connection || false,
+                                status: client.vat_period_status || "needs_attention",
+                                hasFailedValidations: client.has_failed_validations || false,
+                                hasPendingReviews: client.has_pending_reviews || false,
+                            });
+                            const attentionBits: string[] = [];
+                            if ((client.validation_issue_count || 0) > 0) {
+                                attentionBits.push(`Validation docs: ${client.validation_issue_count}`);
+                            }
+                            if ((client.pending_review_count || 0) > 0) {
+                                attentionBits.push(`Pending review docs: ${client.pending_review_count}`);
+                            }
+                            if (client.vat_period_status === "under_review") {
+                                attentionBits.push("Under review");
+                            }
+                            return (
+                                <div key={client.id} className="border border-[#EBECF0] rounded-lg bg-white p-3">
+                                    <div className="text-[12px] font-semibold text-[#172B4D]">{client.name}</div>
+                                    <div className="text-[11px] text-[#5E6C84]">{client.email}</div>
+                                    {client.missing_documents > 0 && (
+                                        <div className="text-[11px] text-[#BF2600] mt-1">
+                                            Missing: {client.missing_documents}
+                                            {client.missing_items?.length
+                                                ? ` • ${client.missing_items.join(", ")}`
+                                                : ""}
+                                        </div>
+                                    )}
+                                    {attentionBits.length > 0 && (
+                                        <div className="text-[11px] text-[#6B778C] mt-1">
+                                            {attentionBits.join(" • ")}
+                                        </div>
+                                    )}
+                                    <div className="mt-3 rounded-lg bg-[#F4F5F7] p-2">
+                                        <ClientFlowDiagram currentStage={stage} variant="horizontal" />
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </ToolCard>
+            );
+        }
+
+        if (message.toolName === "update_checklist_item") {
+            return (
+                <ToolCard>
+                    <p className="text-[13px] font-semibold text-[#172B4D]">{result.message}</p>
+                </ToolCard>
+            );
+        }
+
+        return (
+            <ToolCard>
+                <p className="text-[12px] font-semibold text-[#172B4D]">{message.toolName}</p>
+                <pre className="text-[10px] text-[#5E6C84] mt-2 whitespace-pre-wrap">
+                    {JSON.stringify(result, null, 2)}
+                </pre>
+            </ToolCard>
+        );
+    };
 
     return (
         <div className="flex h-full flex-col bg-white">
@@ -259,29 +643,75 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                     </div>
                 ) : (
                     <div className="p-4 space-y-3">
-                        {messages.map((message, index) => (
-                            <div
-                                key={index}
-                                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                            >
-                                {message.role === "assistant" && (
-                                    <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
-                                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                                        </svg>
+                        {messages.map((message) => {
+                            if (message.kind === "tool") {
+                                return (
+                                    <div key={message.id} className="flex justify-start">
+                                        <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
+                                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                            </svg>
+                                        </div>
+                                        <div className="max-w-[85%]">
+                                            {renderToolResult(message)}
+                                        </div>
                                     </div>
-                                )}
+                                );
+                            }
+
+                            if (message.kind === "create_client_form") {
+                                return (
+                                    <div key={message.id} className="flex justify-start">
+                                        <div className="w-6 h-6 rounded-full bg-[#6554C0] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
+                                            <span className="text-white text-[11px]">✨</span>
+                                        </div>
+                                        <div className="max-w-[85%]">
+                                            <CreateClientFormCard
+                                                onSubmit={async (payload) => {
+                                                    setMessages((prev) => prev.filter((m) => m.id !== message.id));
+                                                    await sendMessageWithContent(payload);
+                                                }}
+                                                onCancel={() => {
+                                                    setMessages((prev) => prev.filter((m) => m.id !== message.id));
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return (
                                 <div
-                                    className={`max-w-[75%] rounded-lg px-3 py-2 ${
-                                        message.role === "user"
-                                            ? "bg-[#0052CC] text-white"
-                                            : "bg-[#F4F5F7] text-[#172B4D]"
-                                    }`}
+                                    key={message.id}
+                                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                                 >
-                                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{message.content}</p>
+                                    {message.role === "assistant" && (
+                                        <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
+                                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                            </svg>
+                                        </div>
+                                    )}
+                                    <div
+                                        className={`max-w-[75%] rounded-lg px-3 py-2 ${
+                                            message.role === "user"
+                                                ? "bg-[#0052CC] text-white"
+                                                : "bg-[#F4F5F7] text-[#172B4D]"
+                                        }`}
+                                    >
+                                        {message.role === "assistant" ? (
+                                            <div className="prose prose-sm max-w-none text-[12px] leading-relaxed prose-p:my-1.5 prose-li:my-1 prose-ul:my-2 prose-ol:my-2 prose-strong:text-inherit">
+                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                    {message.content}
+                                                </ReactMarkdown>
+                                            </div>
+                                        ) : (
+                                            <p className="whitespace-pre-wrap text-[12px] leading-relaxed">{message.content}</p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
 
                         {currentToolUse && (
                             <div className="flex justify-start">
@@ -291,13 +721,13 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                                     </svg>
                                 </div>
-                                <div className="bg-[#FFFAE6] text-[#974F0C] px-3 py-2 rounded-lg text-[12px]">
+                                <div className="bg-[#FFFAE6] text-[#974F0C] px-3 py-2 rounded-lg text-[11px]">
                                     Searching: {currentToolUse}
                                 </div>
                             </div>
                         )}
 
-                        {isLoading && !currentToolUse && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1]?.content === "" && (
+                        {showTypingIndicator && (
                             <div className="flex justify-start">
                                 <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0">
                                     <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -335,7 +765,7 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                         onChange={(e) => setInput(e.target.value)}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask a question..."
-                        className="flex-1 resize-none rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[13px] text-[#172B4D] placeholder:text-[#97A0AF] focus:border-[#0052CC] focus:outline-none transition-colors"
+                        className="flex-1 resize-none rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D] placeholder:text-[#97A0AF] focus:border-[#0052CC] focus:outline-none transition-colors"
                         rows={1}
                         disabled={isLoading}
                         style={{ height: "36px" }}

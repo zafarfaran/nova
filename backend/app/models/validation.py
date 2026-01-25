@@ -27,6 +27,7 @@ class RuleType(str, enum.Enum):
     AI_ANOMALY = "ai_anomaly"
     CURRENCY_VALID = "currency_valid"
     SUPPLIER_VALID = "supplier_valid"
+    ACCOUNT_HOLDER_MATCH = "account_holder_match"
 
 
 class ValidationStatus(str, enum.Enum):

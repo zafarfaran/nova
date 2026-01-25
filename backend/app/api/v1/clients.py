@@ -1,13 +1,25 @@
 """API routes for Client management."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.client import ClientCreate, ClientList, ClientResponse, ClientUpdate
-from app.services.client_service import ClientService
+from app.schemas.client import (
+    ClientCreate,
+    ClientList,
+    ClientResponse,
+    ClientUpdate,
+    OnboardingCompleteRequest,
+    OnboardingCompleteResponse,
+)
+from app.services.audit_service import AuditService
+from app.services.client_service import ClientService, VATPeriodService
 
 router = APIRouter(prefix="/clients", tags=["clients"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
@@ -71,3 +83,66 @@ def delete_client(client_id: int, db: Session = Depends(get_db)) -> None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
         )
+
+
+@router.post(
+    "/{client_id}/onboarding-complete", response_model=OnboardingCompleteResponse
+)
+def onboarding_complete(
+    client_id: int,
+    data: OnboardingCompleteRequest,
+    db: Session = Depends(get_db),
+) -> OnboardingCompleteResponse:
+    """Handle onboarding completion notifications from the portal."""
+    logger.info("Onboarding complete received for client %s", client_id)
+    logger.debug("Onboarding payload: %s", data.model_dump())
+
+    if data.client_id != client_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="client_id in path does not match payload",
+        )
+
+    client_service = ClientService(db)
+    client = client_service.get(client_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
+        )
+
+    vat_period_id = data.vat_period_id
+    if vat_period_id is not None:
+        period_service = VATPeriodService(db)
+        period = period_service.get(vat_period_id)
+        if not period or period.client_id != client_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="VAT period not found for client",
+            )
+
+        description = (
+            "Onboarding completed."
+            f" completed={data.completed_items},"
+            f" not_applicable={data.not_applicable_items},"
+            f" total={data.total_items}"
+        )
+        AuditService(db).log(
+            period_id=period.id,
+            action="onboarding_complete",
+            description=description,
+            performed_by="onboarding_portal",
+            entity_type="client",
+            entity_id=client_id,
+        )
+        logger.info(
+            "Onboarding completion logged for client %s (period %s)",
+            client_id,
+            period.id,
+        )
+
+    return OnboardingCompleteResponse(
+        success=True,
+        message="Onboarding completion recorded",
+        client_id=client_id,
+        vat_period_id=vat_period_id,
+    )

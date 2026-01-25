@@ -4,6 +4,19 @@ import { db } from "~/server/db";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// Valid document types
+const DOCUMENT_TYPES = [
+    "invoice",
+    "receipt",
+    "bank_statement",
+    "payroll",
+    "contract",
+    "vat_certificate",
+    "credit_note",
+    "debit_note",
+    "other",
+] as const;
+
 // Schema for the sync request
 const SyncDocumentSchema = z.object({
     clientId: z.number(),
@@ -12,6 +25,7 @@ const SyncDocumentSchema = z.object({
     fileUrl: z.string().url(),
     fileSize: z.number().optional(),
     contentType: z.string().optional(),
+    documentType: z.enum(DOCUMENT_TYPES).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -46,8 +60,10 @@ export async function POST(request: NextRequest) {
                     filename: validatedData.filename,
                     external_url: validatedData.fileUrl,
                     file_size: validatedData.fileSize,
-                    content_type: validatedData.contentType,
+                    content_type: validatedData.contentType || "application/pdf",
                     client_id: client.id,
+                    checklist_item_id: validatedData.checklistItemId,
+                    document_type: validatedData.documentType,
                 }),
             });
 

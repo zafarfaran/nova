@@ -33,6 +33,7 @@ class DocumentType(str, enum.Enum):
     DEBIT_NOTE = "debit_note"
     RECEIPT = "receipt"
     BANK_STATEMENT = "bank_statement"
+    PAYROLL = "payroll"
     CONTRACT = "contract"
     IMPORT_DECLARATION = "import_declaration"
     EXPORT_DECLARATION = "export_declaration"

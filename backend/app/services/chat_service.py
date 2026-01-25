@@ -17,7 +17,7 @@ You have access to tools to:
 - List all clients and search for specific clients
 - Get detailed client information including document status and bank connections
 - View and update document checklists
-- Find clients who need attention (missing documents)
+- Find clients who need attention (missing documents, validation issues, or review stage)
 - Create new clients
 
 Always be helpful, concise, and professional. When showing data, format it clearly.
@@ -241,9 +241,6 @@ class ChatService:
             for tc in tool_calls_list:
                 tool_name = tc["name"]
 
-                # Notify frontend about tool execution
-                yield f"data: {json.dumps({'type': 'tool_executing', 'tool': tool_name})}\n\n"
-
                 try:
                     # Handle both raw dict input and JSON string
                     if isinstance(tc.get("arguments"), str):
@@ -252,9 +249,14 @@ class ChatService:
                     else:
                         tool_input = tc.get("input", {})
 
+                    # Notify frontend about tool execution
+                    yield f"data: {json.dumps({'type': 'tool_executing', 'tool': tool_name, 'input': tool_input, 'tool_call_id': tc['id']})}\n\n"
+
                     result = self.tools.execute(tool_name, tool_input)
                     result_str = json.dumps(result, indent=2, default=str)
                 except Exception as e:
+                    tool_input = tool_input if "tool_input" in locals() else {}
+                    yield f"data: {json.dumps({'type': 'tool_executing', 'tool': tool_name, 'input': tool_input, 'tool_call_id': tc['id']})}\n\n"
                     result_str = json.dumps({"error": str(e)})
 
                 tool_results.append({
@@ -263,7 +265,12 @@ class ChatService:
                     "content": result_str,
                 })
 
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool': tool_name})}\n\n"
+                try:
+                    result_payload = json.loads(result_str)
+                except json.JSONDecodeError:
+                    result_payload = {"raw": result_str}
+
+                yield f"data: {json.dumps({'type': 'tool_result', 'tool': tool_name, 'tool_call_id': tc['id'], 'result': result_payload})}\n\n"
 
             # Build messages with tool results for continuation
             assistant_msg: dict[str, Any] = {"role": "assistant", "content": collected_text or None}

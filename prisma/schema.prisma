@@ -409,6 +409,7 @@ enum ruletype {
   AI_ANOMALY
   CURRENCY_VALID
   SUPPLIER_VALID
+  ACCOUNT_HOLDER_MATCH
 }
 
 enum validationstatus {

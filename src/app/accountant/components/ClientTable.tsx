@@ -28,6 +28,7 @@ interface ClientTableProps {
     data: ClientRow[];
     onRowClick?: (client: ClientRow) => void;
     selectedId?: string;
+    onDeleteClient?: (clientId: string) => void;
 }
 
 // Status badge component - Jira lozenge style
@@ -123,12 +124,13 @@ function StageHeader({
     );
 }
 
-export function ClientTable({ data, onRowClick, selectedId }: ClientTableProps) {
+export function ClientTable({ data, onRowClick, selectedId, onDeleteClient }: ClientTableProps) {
     const [expandedStages, setExpandedStages] = useState({
         needs_attention: true,
         in_progress: true,
         complete: true,
     });
+    const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
     const toggleStage = (stage: keyof typeof expandedStages) => {
         setExpandedStages((prev) => ({ ...prev, [stage]: !prev[stage] }));
@@ -215,7 +217,10 @@ export function ClientTable({ data, onRowClick, selectedId }: ClientTableProps) 
                                     {stageData.map((client) => (
                                         <div
                                             key={client.id}
-                                            onClick={() => onRowClick?.(client)}
+                                            onClick={() => {
+                                                setMenuOpenId(null);
+                                                onRowClick?.(client);
+                                            }}
                                             className={`
                                                 grid grid-cols-[1fr_90px_110px_140px_90px_80px_36px] gap-0
                                                 hover:bg-[#F4F5F7] cursor-pointer transition-colors duration-100
@@ -269,14 +274,35 @@ export function ClientTable({ data, onRowClick, selectedId }: ClientTableProps) 
 
                                             {/* More actions */}
                                             <div className="px-1 py-3 flex items-center justify-center">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                    }}
-                                                    className="p-1.5 rounded hover:bg-[#EBECF0] text-[#6B778C] hover:text-[#172B4D] transition-colors"
-                                                >
-                                                    <MoreHorizontalIcon size="sm" />
-                                                </button>
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            setMenuOpenId((prev) => (prev === client.id ? null : client.id));
+                                                        }}
+                                                        aria-haspopup="true"
+                                                        aria-expanded={menuOpenId === client.id}
+                                                        className="p-1.5 rounded hover:bg-[#EBECF0] text-[#6B778C] hover:text-[#172B4D] transition-colors"
+                                                    >
+                                                        <MoreHorizontalIcon size="sm" />
+                                                    </button>
+                                                    {menuOpenId === client.id && (
+                                                        <div
+                                                            className="absolute right-0 z-30 mt-2 w-36 rounded-md border border-[#DFE1E6] bg-white shadow-lg ring-1 ring-black/5"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <button
+                                                                onClick={() => {
+                                                                    onDeleteClient?.(client.id);
+                                                                    setMenuOpenId(null);
+                                                                }}
+                                                                className="w-full px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-slate-50 transition-colors"
+                                                            >
+                                                                Delete client
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     ))}

@@ -66,3 +66,7 @@ class AIProvider(ABC):
             Analysis result
         """
         pass
+
+    async def close(self) -> None:
+        """Optional cleanup hook for providers with async clients."""
+        return None

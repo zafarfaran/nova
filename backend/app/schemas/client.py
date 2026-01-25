@@ -52,3 +52,22 @@ class ClientList(BaseModel):
 
     items: list[ClientResponse]
     total: int
+
+
+class OnboardingCompleteRequest(BaseModel):
+    """Schema for onboarding completion notifications."""
+
+    client_id: int
+    completed_items: int | None = None
+    not_applicable_items: int | None = None
+    total_items: int | None = None
+    vat_period_id: int | None = None
+
+
+class OnboardingCompleteResponse(BaseModel):
+    """Response schema for onboarding completion."""
+
+    success: bool
+    message: str
+    client_id: int
+    vat_period_id: int | None = None
