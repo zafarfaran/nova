@@ -5,8 +5,8 @@ import { type Metadata } from "next";
 import { Geist } from "next/font/google";
 
 export const metadata: Metadata = {
-  title: "Nova — VAT compliance for accountants",
-  description: "Make accountants' lives easier with AI-assisted VAT evidence collection and review.",
+  title: "Nova — Tax compliance for accountants",
+  description: "Professional tax evidence collection and review powered by AI.",
   icons: [
     { rel: "icon", url: "/logo.svg", type: "image/svg+xml" },
     { rel: "apple-touch-icon", url: "/logo.svg" },

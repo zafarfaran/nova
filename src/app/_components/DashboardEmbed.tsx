@@ -10,7 +10,7 @@ export function DashboardEmbed() {
             Your Dashboard
           </h2>
           <p className="text-lg text-slate-400 max-w-2xl mx-auto mb-8">
-            Manage all your VAT compliance in one place
+            Manage your tax compliance in one place
           </p>
           <Link
             href="/accountant"

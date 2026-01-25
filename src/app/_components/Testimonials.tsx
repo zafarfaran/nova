@@ -5,7 +5,7 @@ import Image from "next/image";
 export function Testimonials() {
   const testimonials = [
     {
-      quote: "Nova cut our VAT prep time by 75%. We can now serve 3x more clients with the same team.",
+      quote: "Nova cut our tax prep time by 75%. We can now serve 3x more clients with the same team.",
       author: "Sarah Mitchell",
       role: "Partner",
       company: "Mitchell & Associates",

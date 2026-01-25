@@ -168,7 +168,7 @@ export function ClientTable({ data, onRowClick, selectedId, onDeleteClient }: Cl
                     </svg>
                 </div>
                 <h3 className="text-base font-semibold text-[#172B4D] mb-1">No clients yet</h3>
-                <p className="text-[13px] text-[#5E6C84]">Add your first client to get started with VAT compliance tracking.</p>
+                <p className="text-[13px] text-[#5E6C84]">Add your first client to get started with tax compliance tracking.</p>
             </div>
         );
     }
@@ -184,7 +184,7 @@ export function ClientTable({ data, onRowClick, selectedId, onDeleteClient }: Cl
                     Type
                 </div>
                 <div className="px-4 py-2.5 text-[11px] font-semibold text-[#5E6C84] uppercase tracking-wider">
-                    VAT Period
+                    Tax Period
                 </div>
                 <div className="px-4 py-2.5 text-[11px] font-semibold text-[#5E6C84] uppercase tracking-wider">
                     Stage

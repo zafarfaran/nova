@@ -40,8 +40,8 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
                 <br />
                 <span className="font-normal">{userName?.split(" ")[0] || "there"}</span>
               </h1>
-              <p className="text-[24px] leading-[1.5] text-[#000000cc] mb-12 font-light">
-                Your command center is ready. Manage hundreds of clients, automate compliance, and reclaim your time.
+              <p className="text-xl md:text-2xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+                Your tax compliance workspace is ready. Manage clients, track documentation, and stay ahead of deadlines.
               </p>
               <div className="flex justify-center">
                 <Link
@@ -57,13 +57,17 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
             </>
           ) : (
             <>
-              <h1 className="text-[56px] sm:text-[64px] lg:text-[72px] leading-[1.1] font-light text-black mb-8 tracking-tight">
-                10x Your Accounting Power
+              <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold text-white mb-6 tracking-tight">
+                Tax compliance on
+                <br />
+                <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  autopilot
+                </span>
               </h1>
 
               {/* Subheading */}
-              <p className="text-[24px] leading-[1.5] text-[#000000cc] mb-16 font-light">
-                Stop drowning in spreadsheets. Nova is the AI-powered platform that turns accountants into productivity machines.
+              <p className="text-xl md:text-2xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+                A tax management platform built for accounting teams. Automate document collection, validation, and reporting.
               </p>
 
               {/* Power Stats */}

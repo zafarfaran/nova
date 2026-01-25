@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "./components/Sidebar";
 import { TopHeader } from "./components/TopHeader";
@@ -64,28 +64,28 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
             case "flagged":
                 return "Flagged Documents";
             case "ready":
-                return "Ready to Submit";
+                return "Ready for Submission";
             case "clients":
-                return "All Clients";
+                return "Client Portfolio";
             case "vat-returns":
-                return "VAT Returns";
+                return "Tax Returns";
             default:
-                return "VAT Compliance Dashboard";
+                return "Tax Compliance Dashboard";
         }
     };
 
     const getPageSubtitle = () => {
         switch (activeNav) {
             case "flagged":
-                return "Review AI-flagged documents requiring attention";
+                return "Review documents that require verification or follow-up";
             case "ready":
-                return "Clients ready for VAT submission";
+                return "Clients prepared for tax submission";
             case "clients":
-                return "Manage your client portfolio";
+                return "Manage client records, status, and engagement";
             case "vat-returns":
-                return "Track VAT return deadlines";
+                return "Monitor upcoming tax return deadlines";
             default:
-                return "Track client documents and VAT returns";
+                return "Track documentation, status, and tax readiness";
         }
     };
 
@@ -140,6 +140,88 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
             setDeletingClientId(null);
         }
     };
+
+    const aiCtaText = useMemo(() => {
+        if (selectedClient) {
+            return `Ask about ${selectedClient.clientName}`;
+        }
+
+        switch (activeNav) {
+            case "flagged":
+                return "Review flagged documents";
+            case "ready":
+                return "Who is ready to submit?";
+            case "clients":
+                return "Find or create a client";
+            case "vat-returns":
+                return "Tax returns due this month";
+            default:
+                return "Ask about missing documents or clients";
+        }
+    }, [activeNav, selectedClient]);
+
+    const ctaMessages = useMemo(() => {
+        const baseMessages = [
+            "Psssst...",
+            "Need a hand?",
+            aiCtaText,
+            "Check a client's stage",
+            "Find missing docs",
+            "Create a new client",
+            "See who is ready to submit",
+        ];
+        const seen = new Set<string>();
+        return baseMessages.filter((message) => {
+            if (!message) return false;
+            if (seen.has(message)) return false;
+            seen.add(message);
+            return true;
+        });
+    }, [aiCtaText]);
+
+    const [ctaMessageIndex, setCtaMessageIndex] = useState(0);
+    const [ctaCharIndex, setCtaCharIndex] = useState(0);
+    const [ctaIsDeleting, setCtaIsDeleting] = useState(false);
+
+    useEffect(() => {
+        setCtaMessageIndex(0);
+        setCtaCharIndex(0);
+        setCtaIsDeleting(false);
+    }, [ctaMessages]);
+
+    useEffect(() => {
+        if (ctaMessages.length === 0) return;
+        const currentMessage = ctaMessages[ctaMessageIndex % ctaMessages.length] || "";
+        const atFull = ctaCharIndex >= currentMessage.length;
+        const atStart = ctaCharIndex <= 0;
+
+        let delay = ctaIsDeleting ? 40 : 70;
+        if (atFull && !ctaIsDeleting) delay = 1800;
+        if (atStart && ctaIsDeleting) delay = 400;
+
+        const timer = window.setTimeout(() => {
+            if (atFull && !ctaIsDeleting) {
+                setCtaIsDeleting(true);
+                return;
+            }
+
+            if (atStart && ctaIsDeleting) {
+                setCtaIsDeleting(false);
+                setCtaMessageIndex((prev) => (prev + 1) % ctaMessages.length);
+                return;
+            }
+
+            setCtaCharIndex((prev) => prev + (ctaIsDeleting ? -1 : 1));
+        }, delay);
+
+        return () => window.clearTimeout(timer);
+    }, [ctaMessages, ctaMessageIndex, ctaCharIndex, ctaIsDeleting]);
+
+    const currentCtaMessage =
+        ctaMessages.length > 0
+            ? ctaMessages[ctaMessageIndex % ctaMessages.length] || ""
+            : aiCtaText;
+    const typedCtaText = currentCtaMessage.slice(0, ctaCharIndex);
 
     return (
         <div className="flex h-screen bg-[#F4F5F7] overflow-hidden">
@@ -228,10 +310,10 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                         </div>
                     )}
 
-                    {/* VAT Returns View - placeholder */}
+                    {/* Tax Returns View - placeholder */}
                     {activeNav === "vat-returns" && (
                         <div className="animate-fade-in-up bg-white border border-[#DFE1E6] rounded p-8 text-center">
-                            <p className="text-[#5E6C84]">VAT Returns view coming soon</p>
+                            <p className="text-[#5E6C84]">Tax Returns view coming soon</p>
                         </div>
                     )}
                 </main>
@@ -269,8 +351,8 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                             >
                                 <ChevronRightIcon size="md" />
                             </button>
-                            <div className="p-1.5 bg-[#0052CC] rounded">
-                                <SparkleIcon size="sm" className="text-white" />
+                            <div className="h-8 w-8 rounded-full bg-black flex items-center justify-center">
+                                <img src="/logo.svg" alt="Nova" className="h-4 w-4" />
                             </div>
                             <div>
                                 <h2 className="text-[14px] font-semibold text-[#172B4D]">AI Assistant</h2>
@@ -292,13 +374,26 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
 
             {/* Floating AI Button */}
             {!showAIChat && (
-                <button
-                    onClick={() => setShowAIChat(true)}
-                    className="fixed bottom-4 right-4 p-2.5 bg-[#0052CC] text-white rounded-full shadow-md hover:bg-[#0747A6] hover:shadow-lg transition-all duration-150 z-40"
-                    title="Open AI Assistant"
-                >
-                    <SparkleIcon size="sm" />
-                </button>
+                <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2">
+                    <div className="relative flex items-center">
+                        <div
+                            className="relative z-10 rounded-full bg-white px-3.5 py-2 text-[11px] font-medium text-[#172B4D] shadow-sm border border-[#DFE1E6] whitespace-nowrap transition-opacity duration-500"
+                            style={{ opacity: ctaIsDeleting ? 0.5 : 1 }}
+                            aria-live="polite"
+                        >
+                            <span className="transition-opacity duration-500">{typedCtaText}</span>
+                        </div>
+                        <span className="absolute right-[-6px] top-1/2 h-3.5 w-3.5 -translate-y-1/2 rotate-45 bg-[#DFE1E6] shadow-sm z-0" />
+                        <span className="absolute right-[-5px] top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 bg-white z-0" />
+                    </div>
+                    <button
+                        onClick={() => setShowAIChat(true)}
+                        className="relative h-11 w-11 rounded-full bg-[#0B4DBA] text-white shadow-sm hover:bg-[#0842A0] hover:shadow-md transition-all duration-150 ease-out flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2684FF]/40"
+                        title="Open AI Assistant"
+                    >
+                        <img src="/logo.svg" alt="Nova" className="h-5 w-5" />
+                    </button>
+                </div>
             )}
         </div>
     );

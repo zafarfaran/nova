@@ -27,20 +27,16 @@ export function CTASection() {
             Ready to 10x your output?
           </h2>
 
-          <p className="text-[24px] leading-[1.5] text-[#000000cc] mb-12 max-w-[600px] mx-auto font-light">
-            Stop being buried in paperwork. Start being the accountant everyone wants to work with.
-          </p>
+            {/* Heading */}
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+              Ready to modernize your tax workflow?
+            </h2>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
-            <SignInButton variant="white" />
-            <button className="inline-flex items-center gap-2 px-6 py-3 text-black text-[16px] font-medium hover:text-[#0052CC] transition-colors">
-              Schedule a demo
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
-          </div>
+            {/* Description */}
+            <p className="text-lg md:text-xl text-slate-300 mb-10 leading-relaxed">
+              Join accounting teams streamlining tax compliance with automation.
+              Get started in minutes, no credit card required.
+            </p>
 
           {/* Trust Indicators */}
           <div className="flex flex-wrap items-center justify-center gap-8 text-[14px] mb-16">

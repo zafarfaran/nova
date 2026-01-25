@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
             user: {
                 client_user_id: String(clientId),
             },
-            client_name: "Nova VAT Portal",
+            client_name: "Nova Tax Portal",
             products: [Products.Transactions],
             country_codes: [CountryCode.Gb, CountryCode.Us],
             language: "en",

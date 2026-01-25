@@ -314,7 +314,7 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
 
     const quickPrompts = [
         "Which clients need attention?",
-        "VAT returns due this month",
+        "Tax returns due this month",
         "Missing documents summary",
         "Create a new client",
     ];
@@ -342,8 +342,8 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                 `Name: ${name}`,
                 `Email: ${email}`,
                 `Entity type: ${entityType}`,
-                `VAT scheme: ${vatScheme}`,
-                vatNumber ? `VAT number: ${vatNumber}` : null,
+                `Tax scheme: ${vatScheme}`,
+                vatNumber ? `Tax number: ${vatNumber}` : null,
                 notes ? `Notes: ${notes}` : null,
             ]
                 .filter(Boolean)
@@ -402,7 +402,7 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                     <input
                         value={vatNumber}
                         onChange={(e) => setVatNumber(e.target.value)}
-                        placeholder="VAT number (optional)"
+                        placeholder="Tax number (optional)"
                         className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
                     />
                     <textarea
@@ -525,19 +525,49 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
 
         if (message.toolName === "get_document_checklist") {
             const checklist = result.checklist || [];
+            const summary = result.summary || {};
+            const docsRequired = summary.required_items ?? summary.total_items ?? 0;
+            const docsUploaded = summary.uploaded ?? 0;
+            const hasBank =
+                typeof result.has_bank_connected === "boolean" ? result.has_bank_connected : undefined;
+            const stage = getClientStage({
+                documentsUploaded: docsUploaded,
+                documentsRequired: docsRequired,
+                hasBankConnection: hasBank ?? false,
+                status: docsUploaded === docsRequired ? "complete" : "needs_attention",
+            });
             return (
                 <ToolCard>
-                    <p className="text-[13px] font-semibold text-[#172B4D]">
-                        Checklist for {result.client_name}
-                    </p>
-                    <div className="mt-2 space-y-1">
-                        {checklist.map((item: any) => (
-                            <div key={item.id} className="flex items-center justify-between text-[12px] rounded bg-white px-2 py-1">
-                                <span className="text-[#172B4D]">{item.title}</span>
-                                <span className="text-[#5E6C84]">{item.status_icon}</span>
-                            </div>
-                        ))}
+                    <p className="text-[13px] font-semibold text-[#172B4D]">{result.client_name}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[12px] text-[#172B4D]">
+                        <div>
+                            Docs: {docsUploaded}/{docsRequired}
+                        </div>
+                        <div>
+                            Bank: {hasBank === undefined ? "Unknown" : hasBank ? "Connected" : "Not linked"}
+                        </div>
                     </div>
+                    <div className="mt-3 rounded-lg bg-white p-2">
+                        <ClientFlowDiagram currentStage={stage} variant="horizontal" />
+                    </div>
+                    {checklist.length > 0 && (
+                        <details className="mt-3">
+                            <summary className="cursor-pointer text-[11px] font-semibold text-[#0052CC]">
+                                View checklist
+                            </summary>
+                            <div className="mt-2 space-y-1">
+                                {checklist.map((item: any) => (
+                                    <div
+                                        key={item.id}
+                                        className="flex items-center justify-between text-[12px] rounded bg-white px-2 py-1"
+                                    >
+                                        <span className="text-[#172B4D]">{item.title}</span>
+                                        <span className="text-[#5E6C84]">{item.status_icon}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </details>
+                    )}
                 </ToolCard>
             );
         }
@@ -634,7 +664,7 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                         </div>
                         <h3 className="text-[15px] font-semibold text-[#172B4D] mb-1">How can I help?</h3>
                         <p className="text-[12px] text-[#5E6C84] text-center mb-6">
-                            Ask about clients, VAT returns, or documents
+                            Ask about clients, tax returns, or documents
                         </p>
 
                         {/* Quick prompts */}
@@ -656,10 +686,8 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                             if (message.kind === "tool") {
                                 return (
                                     <div key={message.id} className="flex justify-start">
-                                        <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
-                                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                                            </svg>
+                                        <div className="w-6 h-6 rounded-full bg-white border border-[#DFE1E6] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
+                                            <img src="/logo.svg" alt="Nova" className="h-4 w-4" />
                                         </div>
                                         <div className="max-w-[85%]">
                                             {renderToolResult(message)}
@@ -695,10 +723,8 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                                     className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                                 >
                                     {message.role === "assistant" && (
-                                        <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
-                                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                                            </svg>
+                                        <div className="w-6 h-6 rounded-full bg-white border border-[#DFE1E6] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
+                                            <img src="/logo.svg" alt="Nova" className="h-4 w-4" />
                                         </div>
                                     )}
                                     <div
@@ -724,11 +750,8 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
 
                         {currentToolUse && (
                             <div className="flex justify-start">
-                                <div className="w-6 h-6 rounded-full bg-[#0052CC] flex items-center justify-center mr-2 flex-shrink-0">
-                                    <svg className="w-3 h-3 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                    </svg>
+                                <div className="w-6 h-6 rounded-full bg-white border border-[#DFE1E6] flex items-center justify-center mr-2 flex-shrink-0">
+                                    <img src="/logo.svg" alt="Nova" className="h-4 w-4" />
                                 </div>
                                 <div className="bg-[#FFFAE6] text-[#974F0C] px-3 py-2 rounded-lg text-[11px]">
                                     Searching: {currentToolUse}
