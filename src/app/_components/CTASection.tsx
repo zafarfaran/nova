@@ -1,12 +1,24 @@
 "use client";
 
 import { SignInButton } from "./SignInButton";
+import Image from "next/image";
 
 export function CTASection() {
   return (
     <section className="py-20 bg-[#fafafa] border-t border-[#e8e8e8]">
       <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12">
         <div className="border border-[#e8e8e8] rounded-[4px] p-16 md:p-20 bg-white text-center">
+          {/* Logo */}
+          <div className="inline-flex items-center justify-center mb-8">
+            <Image
+              src="/logo.svg"
+              alt="Nova"
+              width={48}
+              height={48}
+              className="w-12 h-12"
+            />
+          </div>
+
           <span className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono mb-8 block">
             Join the revolution
           </span>

@@ -2,6 +2,7 @@
 
 import { SignInButton } from "./SignInButton";
 import Link from "next/link";
+import Image from "next/image";
 
 interface HeroSectionProps {
   isLoggedIn?: boolean;
@@ -13,12 +14,23 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
     <section className="relative bg-[#fafafa] pt-32 pb-20 border-b border-[#e8e8e8]">
       <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12">
         <div className="text-center max-w-[700px] mx-auto">
+          {/* Logo Badge */}
+          <div className="inline-flex items-center justify-center mb-8">
+            <Image
+              src="/logo.svg"
+              alt="Nova"
+              width={64}
+              height={64}
+              className="w-16 h-16"
+            />
+          </div>
+
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 mb-8">
+          {/* <div className="inline-flex items-center gap-2 mb-8">
             <span className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono">
               Powered by Claude AI
             </span>
-          </div>
+          </div> */}
 
           {/* Main Heading */}
           {isLoggedIn ? (
@@ -89,12 +101,19 @@ export function HeroSection({ isLoggedIn, userName }: HeroSectionProps) {
         {!isLoggedIn && (
           <div className="mt-20">
             <div className="border border-[#e8e8e8] rounded-[4px] overflow-hidden bg-white shadow-sm">
-              <div className="bg-[#F4F5F7] border-b border-[#e8e8e8] px-4 py-3 flex items-center gap-2">
+              <div className="bg-[#F4F5F7] border-b border-[#e8e8e8] px-4 py-3 flex items-center gap-3">
                 <div className="flex gap-2">
                   <div className="w-3 h-3 rounded-full bg-[#DE350B]"></div>
                   <div className="w-3 h-3 rounded-full bg-[#FF991F]"></div>
                   <div className="w-3 h-3 rounded-full bg-[#36B37E]"></div>
                 </div>
+                <Image
+                  src="/logo.svg"
+                  alt="Nova"
+                  width={16}
+                  height={16}
+                  className="w-4 h-4"
+                />
                 <div className="flex-1 text-center">
                   <div className="inline-flex items-center gap-2 bg-white border border-[#e8e8e8] rounded-[4px] px-4 py-1.5 text-[12px] text-[#5E6C84]">
                     <svg className="w-3 h-3 text-[#36B37E]" fill="currentColor" viewBox="0 0 20 20">

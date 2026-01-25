@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 export function Testimonials() {
   const testimonials = [
     {
@@ -43,15 +45,26 @@ export function Testimonials() {
           {testimonials.map((testimonial, index) => (
             <div
               key={index}
-              className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors"
+              className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors relative overflow-hidden"
             >
+              {/* Decorative Logo */}
+              <div className="absolute top-6 right-6 opacity-5">
+                <Image
+                  src="/logo.svg"
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="w-12 h-12"
+                />
+              </div>
+
               {/* Quote */}
-              <blockquote className="text-[16px] leading-[1.6] text-[#000000cc] mb-8">
+              <blockquote className="text-[16px] leading-[1.6] text-[#000000cc] mb-8 relative z-10">
                 "{testimonial.quote}"
               </blockquote>
 
               {/* Author */}
-              <div className="border-t border-[#e8e8e8] pt-6">
+              <div className="border-t border-[#e8e8e8] pt-6 relative z-10">
                 <div className="font-medium text-black text-[14px]">{testimonial.author}</div>
                 <div className="text-[12px] text-[#9ba1a5] mt-1">
                   {testimonial.role}, {testimonial.company}

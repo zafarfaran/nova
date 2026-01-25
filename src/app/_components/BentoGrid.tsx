@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 export function BentoGrid() {
   return (
     <section className="py-20 bg-[#fafafa] border-t border-[#e8e8e8]">
@@ -20,8 +22,19 @@ export function BentoGrid() {
         {/* Features Grid */}
         <div className="space-y-4">
           {/* AI Document Processing */}
-          <div className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors">
-            <div className="max-w-[700px]">
+          <div className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors relative overflow-hidden">
+            {/* Decorative Logo */}
+            <div className="absolute top-8 right-8 opacity-5">
+              <Image
+                src="/logo.svg"
+                alt=""
+                width={120}
+                height={120}
+                className="w-30 h-30"
+              />
+            </div>
+
+            <div className="max-w-[700px] relative z-10">
               <span className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono mb-4 block">
                 Claude AI Brain
               </span>
@@ -103,8 +116,19 @@ export function BentoGrid() {
           </div>
 
           {/* Command Center */}
-          <div className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors">
-            <div className="max-w-[700px]">
+          <div className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors relative overflow-hidden">
+            {/* Decorative Logo */}
+            <div className="absolute bottom-8 right-8 opacity-5">
+              <Image
+                src="/logo.svg"
+                alt=""
+                width={120}
+                height={120}
+                className="w-30 h-30"
+              />
+            </div>
+
+            <div className="max-w-[700px] relative z-10">
               <span className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono mb-4 block">
                 Mission Control
               </span>
