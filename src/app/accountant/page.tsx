@@ -1,10 +1,13 @@
 import { db } from "~/server/db";
+import { auth } from "~/server/auth";
 import { AccountantDashboardClient } from "./DashboardClient";
 import type { ClientRow } from "./components/ClientTable";
 import type { DashboardMetrics } from "./components/QuickMetrics";
 
 // Server component that fetches data from the clients table
 export default async function AccountantDashboard() {
+    // Get the current user session
+    const session = await auth();
     // Fetch all clients with their VAT periods, bank connections, checklist items, and validation status
     const clients = await db.client.findMany({
         include: {
@@ -167,5 +170,15 @@ export default async function AccountantDashboard() {
         flaggedSubtitle: clientsWithFlags > 0 ? `From ${clientsWithFlags} clients` : "All clear",
     };
 
-    return <AccountantDashboardClient clients={clientRows} metrics={metrics} />;
+    return (
+        <AccountantDashboardClient
+            clients={clientRows}
+            metrics={metrics}
+            user={{
+                name: session?.user?.name ?? null,
+                email: session?.user?.email ?? null,
+                image: session?.user?.image ?? null,
+            }}
+        />
+    );
 }

@@ -27,6 +27,11 @@ interface SidebarProps {
     vatDueCount?: number;
     flaggedCount?: number;
     readyCount?: number;
+    user?: {
+        name: string | null;
+        email: string | null;
+        image: string | null;
+    };
 }
 
 // Flag icon for flagged documents
@@ -54,6 +59,7 @@ export function Sidebar({
     vatDueCount,
     flaggedCount,
     readyCount,
+    user,
 }: SidebarProps) {
     const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -187,16 +193,43 @@ export function Sidebar({
             </button>
 
             {/* User Profile */}
-            {!isCollapsed && (
+            {user && (
                 <div className="px-3 py-3 border-t border-white/5">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#238636] flex items-center justify-center text-white font-medium text-xs">
-                            JD
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium text-[#C9D1D9] truncate">John Doe</p>
-                            <p className="text-[11px] text-[#8B949E] truncate">Senior Accountant</p>
-                        </div>
+                    <div className={`flex items-center gap-3 ${isCollapsed ? "justify-center" : ""}`}>
+                        {user.image ? (
+                            <img
+                                src={user.image}
+                                alt={user.name || "User"}
+                                className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                                title={user.name || user.email || "User"}
+                            />
+                        ) : (
+                            <div
+                                className="w-8 h-8 rounded-full bg-[#238636] flex items-center justify-center text-white font-medium text-xs flex-shrink-0"
+                                title={user.name || user.email || "User"}
+                            >
+                                {user.name
+                                    ? user.name
+                                          .split(" ")
+                                          .map((n) => n[0])
+                                          .join("")
+                                          .toUpperCase()
+                                          .slice(0, 2)
+                                    : user.email
+                                    ? user.email[0].toUpperCase()
+                                    : "U"}
+                            </div>
+                        )}
+                        {!isCollapsed && (
+                            <div className="flex-1 min-w-0 animate-fade-in">
+                                <p className="text-[13px] font-medium text-[#C9D1D9] truncate">
+                                    {user.name || user.email || "User"}
+                                </p>
+                                {user.email && user.name && (
+                                    <p className="text-[11px] text-[#8B949E] truncate">{user.email}</p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

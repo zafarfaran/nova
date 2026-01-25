@@ -17,9 +17,14 @@ import "./styles/dashboard.css";
 interface AccountantDashboardClientProps {
     clients: ClientRow[];
     metrics: DashboardMetrics;
+    user: {
+        name: string | null;
+        email: string | null;
+        image: string | null;
+    };
 }
 
-export function AccountantDashboardClient({ clients, metrics }: AccountantDashboardClientProps) {
+export function AccountantDashboardClient({ clients, metrics, user }: AccountantDashboardClientProps) {
     const router = useRouter();
     const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
     const [showDetailPanel, setShowDetailPanel] = useState(false);
@@ -231,7 +236,8 @@ export function AccountantDashboardClient({ clients, metrics }: AccountantDashbo
                 clientCount={metrics.totalClients}
                 vatDueCount={metrics.vatReturnsDue}
                 flaggedCount={flaggedDocumentsCount}
-                    readyCount={readyClientsCount}
+                readyCount={readyClientsCount}
+                user={user}
                 onNavigate={(itemId) => {
                     setActiveNav(itemId);
                     if (itemId === "ai-assistant") {
