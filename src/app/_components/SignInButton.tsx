@@ -15,7 +15,7 @@ export function SignInButton({ variant = "default" }: SignInButtonProps) {
     return (
       <button
         onClick={handleSignIn}
-        className="group px-8 py-4 bg-black text-white rounded-lg font-semibold hover:bg-slate-800 transition-all flex items-center gap-3 shadow-lg shadow-black/10"
+        className="inline-flex items-center gap-3 px-8 py-4 bg-black text-white text-[16px] font-medium rounded-[4px] hover:bg-[#0052CC] transition-colors"
       >
         <svg className="w-5 h-5 bg-white rounded p-0.5" viewBox="0 0 24 24">
           <path
@@ -44,9 +44,9 @@ export function SignInButton({ variant = "default" }: SignInButtonProps) {
     return (
       <button
         onClick={handleSignIn}
-        className="px-8 py-4 bg-white text-slate-900 rounded-lg font-semibold hover:bg-slate-50 transition-all flex items-center gap-3 shadow-lg shadow-black/10 border border-white/20"
+        className="inline-flex items-center gap-3 px-8 py-4 bg-black text-white text-[16px] font-medium rounded-[4px] hover:bg-[#0052CC] transition-colors"
       >
-        <svg className="w-5 h-5 bg-white rounded p-0.5 shadow-sm" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 bg-white rounded p-0.5" viewBox="0 0 24 24">
           <path
             fill="#4285F4"
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -72,7 +72,7 @@ export function SignInButton({ variant = "default" }: SignInButtonProps) {
   return (
     <button
       onClick={handleSignIn}
-      className="px-5 py-2 bg-white text-black rounded-lg font-medium hover:bg-slate-200 transition-colors text-sm"
+      className="px-5 py-2 bg-black text-white rounded-[4px] font-medium hover:bg-[#0052CC] transition-colors text-[14px]"
     >
       Sign in
     </button>

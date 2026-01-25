@@ -7,72 +7,54 @@ export function Testimonials() {
       author: "Sarah Mitchell",
       role: "Partner",
       company: "Mitchell & Associates",
-      initial: "S",
     },
     {
       quote: "The AI document extraction is scary good. It catches errors we would have missed manually.",
       author: "James Chen",
       role: "Senior Accountant",
       company: "Chen Tax Services",
-      initial: "J",
     },
     {
       quote: "Finally, a tool that clients actually use. The automated chasers have been a game-changer.",
       author: "Emma Thompson",
       role: "Managing Director",
       company: "Thompson Financial",
-      initial: "E",
     },
   ];
 
   return (
-    <section className="py-24 bg-slate-950 border-y border-slate-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="py-20 bg-[#fafafa] border-t border-[#e8e8e8]">
+      <div className="max-w-[1200px] mx-auto px-6 sm:px-8 lg:px-12">
         {/* Section Header */}
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">
+        <div className="text-center mb-20">
+          <span className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono mb-6 block">
+            Testimonials
+          </span>
+          <h2 className="text-[56px] leading-[1.1] font-light text-black mb-6 tracking-tight max-w-[800px] mx-auto">
             Loved by accountants
           </h2>
-          <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+          <p className="text-[24px] leading-[1.5] text-[#000000cc] max-w-[700px] mx-auto font-light">
             Join hundreds of practices saving time and reducing errors
           </p>
         </div>
 
         {/* Testimonials Grid */}
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-3 gap-4 mb-16">
           {testimonials.map((testimonial, index) => (
             <div
               key={index}
-              className="bg-slate-900 rounded-xl border border-slate-800 p-8 hover:border-slate-700 transition-all"
+              className="border border-[#e8e8e8] rounded-[4px] p-10 bg-white hover:border-[#0052CC] transition-colors"
             >
-              {/* Stars */}
-              <div className="flex gap-1 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <svg
-                    key={i}
-                    className="w-4 h-4 text-yellow-400 fill-current"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-              </div>
-
               {/* Quote */}
-              <blockquote className="text-slate-300 mb-6 leading-relaxed">
+              <blockquote className="text-[16px] leading-[1.6] text-[#000000cc] mb-8">
                 "{testimonial.quote}"
               </blockquote>
 
               {/* Author */}
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-black font-semibold">
-                  {testimonial.initial}
-                </div>
-                <div>
-                  <div className="font-semibold text-white">{testimonial.author}</div>
-                  <div className="text-sm text-slate-400">
-                    {testimonial.role}, {testimonial.company}
-                  </div>
+              <div className="border-t border-[#e8e8e8] pt-6">
+                <div className="font-medium text-black text-[14px]">{testimonial.author}</div>
+                <div className="text-[12px] text-[#9ba1a5] mt-1">
+                  {testimonial.role}, {testimonial.company}
                 </div>
               </div>
             </div>
@@ -80,23 +62,18 @@ export function Testimonials() {
         </div>
 
         {/* Stats */}
-        <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">500+</div>
-            <div className="text-sm text-slate-400">Accounting firms</div>
-          </div>
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">50K+</div>
-            <div className="text-sm text-slate-400">Clients managed</div>
-          </div>
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">2M+</div>
-            <div className="text-sm text-slate-400">Documents processed</div>
-          </div>
-          <div className="text-center">
-            <div className="text-4xl font-bold text-white mb-2">99.9%</div>
-            <div className="text-sm text-slate-400">Uptime</div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { value: "500+", label: "Accounting firms" },
+            { value: "50K+", label: "Clients managed" },
+            { value: "2M+", label: "Documents processed" },
+            { value: "99.9%", label: "Uptime" }
+          ].map((stat, i) => (
+            <div key={i} className="border border-[#e8e8e8] rounded-[4px] p-8 bg-white text-center">
+              <div className="text-[32px] font-medium text-black mb-2">{stat.value}</div>
+              <div className="text-[12px] uppercase tracking-[1px] text-[#9ba1a5] font-mono">{stat.label}</div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
