@@ -343,12 +343,6 @@ class ChatTools:
             .all()
         )
 
-        bank_connections = list(
-            self.db.query(BankConnection)
-            .filter(BankConnection.client_id == client_id, BankConnection.is_active == True)
-            .all()
-        )
-
         items = []
         for item in checklist_items:
             status_icon = "✅" if item.status == "uploaded" else ("⏳" if item.status == "unknown" else "❌")
@@ -374,7 +368,6 @@ class ChatTools:
                 "missing": len(required) - len(uploaded),
                 "completion_percentage": round(len(uploaded) / len(required) * 100) if required else 100,
             },
-            "has_bank_connected": len(bank_connections) > 0,
         }
 
     def _tool_get_clients_needing_attention(self) -> dict[str, Any]:

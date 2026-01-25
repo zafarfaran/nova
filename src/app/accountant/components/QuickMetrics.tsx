@@ -126,9 +126,9 @@ export function QuickMetrics({ metrics, onMetricClick }: QuickMetricsProps) {
         },
         {
             id: "vat-returns",
-            title: "Tax Returns Due",
+            title: "VAT Returns Due",
             value: metrics.vatReturnsDue,
-            subtitle: metrics.vatSubtitle || "Current period",
+            subtitle: metrics.vatSubtitle || "This period",
             icon: <VatIcon size="md" />,
             accentColor: "#6554C0", // Purple
         },

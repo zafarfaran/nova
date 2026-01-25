@@ -19,7 +19,7 @@ const DOCUMENT_TYPES = {
     bank_statement: { label: "Bank Statement", color: "#5243AA", bgColor: "#EAE6FF" },
     payroll: { label: "Payroll", color: "#FF991F", bgColor: "#FFF0B3" },
     contract: { label: "Contract", color: "#172B4D", bgColor: "#DFE1E6" },
-    vat_certificate: { label: "Tax Certificate", color: "#DE350B", bgColor: "#FFEBE6" },
+    vat_certificate: { label: "VAT Certificate", color: "#DE350B", bgColor: "#FFEBE6" },
     other: { label: "Other", color: "#5E6C84", bgColor: "#F4F5F7" },
 } as const;
 

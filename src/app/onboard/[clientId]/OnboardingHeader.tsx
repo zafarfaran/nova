@@ -28,7 +28,7 @@ export function OnboardingHeader({
                         </div>
                         <div>
                             <h1 className="text-[15px] font-bold text-[#172B4D]">{clientName}</h1>
-                            <p className="text-[11px] text-[#5E6C84]">Tax Pack Portal - {vatPeriod}</p>
+                            <p className="text-[11px] text-[#5E6C84]">VAT Pack Portal - {vatPeriod}</p>
                         </div>
                     </div>
 

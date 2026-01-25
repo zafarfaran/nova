@@ -15,7 +15,7 @@ export async function PATCH(
         const periodIdNum = parseInt(periodId, 10);
         if (isNaN(periodIdNum)) {
             return NextResponse.json(
-                { success: false, error: "Invalid tax period ID" },
+                { success: false, error: "Invalid VAT period ID" },
                 { status: 400 }
             );
         }
@@ -45,7 +45,7 @@ export async function PATCH(
 
         if (!period) {
             return NextResponse.json(
-                { success: false, error: "Tax period not found" },
+                { success: false, error: "VAT period not found" },
                 { status: 404 }
             );
         }
@@ -114,7 +114,7 @@ export async function PATCH(
                 { status: 400 }
             );
         }
-        console.error("Error updating tax period status:", error);
+        console.error("Error updating VAT period status:", error);
         return NextResponse.json(
             { success: false, error: "Internal server error" },
             { status: 500 }

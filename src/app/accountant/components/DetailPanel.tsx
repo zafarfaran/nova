@@ -36,9 +36,9 @@ const entityLabels: Record<string, string> = {
     limited_company: "Limited Company",
 };
 
-// Tax scheme labels
+// VAT scheme labels
 const vatSchemeLabels: Record<string, string> = {
-    standard: "Standard Tax",
+    standard: "Standard VAT",
     flat_rate: "Flat Rate Scheme",
     cash_accounting: "Cash Accounting",
     annual_accounting: "Annual Accounting",

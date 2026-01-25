@@ -76,7 +76,7 @@ export function OnboardingContent({ client, latestVatPeriod }: OnboardingContent
                         </div>
                         <div className="h-4 w-px bg-[#DFE1E6]" />
                         <div className="flex items-center gap-2">
-                            <span className="text-[#5E6C84]">Tax Scheme:</span>
+                            <span className="text-[#5E6C84]">VAT Scheme:</span>
                             <span className="font-medium text-[#172B4D]">{client.vatScheme || "Standard"}</span>
                         </div>
                         {periodStart && periodEnd && (
@@ -106,7 +106,7 @@ export function OnboardingContent({ client, latestVatPeriod }: OnboardingContent
                 {uploadItems.length > 0 && (
                     <ChecklistSection
                         title="Required Documents"
-                        subtitle="Upload the following documents for tax compliance"
+                        subtitle="Upload the following documents for VAT compliance"
                         icon="document"
                         items={uploadItems}
                         clientId={client.id}
