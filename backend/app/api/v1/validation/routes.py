@@ -12,9 +12,9 @@ from app.schemas.validation import (
     ValidationRunResponse,
     ValidationSummary,
 )
-from app.services.document_service import DocumentService
-from app.services.engagement_service import EngagementService
-from app.services.validation_service import ValidationService
+from app.services.documents import DocumentService
+from app.services.engagements import EngagementService
+from app.services.validation import ValidationService
 
 router = APIRouter(prefix="/validation", tags=["validation"])
 
@@ -125,8 +125,8 @@ def run_client_validation(
     Validates all documents across all engagements for the client.
     Uses specialized AI agents for document-specific validation.
     """
-    from app.models.client import Client
-    from app.tasks.validation_tasks import validate_client_documents
+    from app.models.clients import Client
+    from app.tasks.validation import validate_client_documents
 
     # Check client exists
     client = db.get(Client, client_id)
@@ -156,7 +156,7 @@ async def reject_document(
     This marks the document as failed and sends an email to the client
     explaining why it was rejected.
     """
-    from app.models.document import DocumentStatus
+    from app.models.documents import DocumentStatus
     from app.services.email_notification_service import EmailNotificationService
 
     doc_service = DocumentService(db)

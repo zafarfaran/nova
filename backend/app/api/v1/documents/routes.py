@@ -12,10 +12,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.document import Document, DocumentStatus
-from app.models.engagement import Engagement
-from app.models.request_set import RequestSet
-from app.models.request_item import RequestItem
+from app.models.documents import Document, DocumentStatus
+from app.models.engagements import Engagement
+from app.models.requests import RequestSet, RequestItem
 from app.schemas.document import (
     DocumentList,
     DocumentResponse,
@@ -24,8 +23,8 @@ from app.schemas.document import (
     ExtractedData,
     PresignedUrlResponse,
 )
-from app.services.document_service import DocumentService
-from app.tasks.document_tasks import run_process_document
+from app.services.documents import DocumentService
+from app.tasks.documents import run_process_document
 
 logger = logging.getLogger(__name__)
 

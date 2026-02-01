@@ -12,8 +12,8 @@ from app.schemas.chaser import (
     ChaserResponseCreate,
     ChaserResponseResponse,
 )
-from app.services.chaser_service import ChaserService
-from app.services.engagement_service import EngagementService
+from app.services.chaser import ChaserService
+from app.services.engagements import EngagementService
 
 router = APIRouter(prefix="/chaser", tags=["chaser"])
 

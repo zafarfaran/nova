@@ -10,8 +10,8 @@ from app.schemas.engagement import (
     EngagementResponse,
     EngagementUpdate,
 )
-from app.services.client_service import ClientService
-from app.services.engagement_service import EngagementService
+from app.services.clients import ClientService
+from app.services.engagements import EngagementService
 
 router = APIRouter(prefix="/engagements", tags=["engagements"])
 

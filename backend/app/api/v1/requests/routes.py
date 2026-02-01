@@ -14,8 +14,8 @@ from app.schemas.request import (
     RequestItemResponse,
     RequestItemUpdate,
 )
-from app.services.engagement_service import EngagementService
-from app.services.request_service import RequestSetService, RequestItemService
+from app.services.engagements import EngagementService
+from app.services.requests import RequestSetService, RequestItemService
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 

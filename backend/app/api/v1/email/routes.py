@@ -12,7 +12,7 @@ from app.schemas.email import (
     EmailResponse,
     EmailTone,
 )
-from app.services.email_service import EmailService
+from app.services.email import EmailService
 
 router = APIRouter(prefix="/email", tags=["email"])
 

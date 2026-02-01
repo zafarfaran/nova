@@ -14,9 +14,9 @@ from app.schemas.client import (
     OnboardingCompleteRequest,
     OnboardingCompleteResponse,
 )
-from app.services.audit_service import AuditService
-from app.services.client_service import ClientService
-from app.services.engagement_service import EngagementService
+from app.services.audit import AuditService
+from app.services.clients import ClientService
+from app.services.engagements import EngagementService
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 

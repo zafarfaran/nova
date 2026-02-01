@@ -13,7 +13,7 @@ from app.schemas.chat import (
     ChatSessionCreate,
     ChatSessionResponse,
 )
-from app.services.chat_service import ChatService
+from app.services.chat import ChatService
 
 
 class ChatStreamMessage(BaseModel):
