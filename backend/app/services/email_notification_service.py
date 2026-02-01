@@ -123,18 +123,12 @@ class EmailNotificationService:
             True if email sent successfully
         """
         document = self.db.get(Document, document_id)
-        if not document or not document.evidence_item:
+        if not document:
             logger.warning(f"Cannot send validation email: document {document_id} not found")
             return False
 
-        # Get client through evidence item -> vat period -> client
-        evidence_item = document.evidence_item
-        if not evidence_item or not evidence_item.vat_period:
-            logger.warning(f"Cannot send validation email: missing evidence/period for doc {document_id}")
-            return False
-
-        vat_period = evidence_item.vat_period
-        client = vat_period.client
+        # Get client through document -> client relationship
+        client = document.client
         if not client or not client.contact_email:
             logger.warning(f"Cannot send validation email: client not found or no email")
             return False
@@ -156,12 +150,18 @@ class EmailNotificationService:
         for result in warning_validations:
             issues.append(f"⚠️ {result.message or result.rule_type.value}")
 
+        # Get period info from engagement if available
+        engagement = document.engagement
+        period_str = "current period"
+        if engagement and engagement.period_start:
+            period_str = f"Q{((engagement.period_start.month - 1) // 3) + 1} {engagement.period_start.year}"
+
         context_data = {
             "document_name": document.filename,
-            "document_type": document.document_type.value if document.document_type else "document",
+            "document_type": document.document_type_ref.name if document.document_type_ref else "document",
             "issues": issues,
             "issue_count": len(issues),
-            "vat_period": f"Q{((vat_period.period_start.month - 1) // 3) + 1} {vat_period.period_start.year}" if vat_period.period_start else "current period",
+            "vat_period": period_str,
             "call_to_action": "Upload the corrected document and Nova will re-validate it instantly.",
         }
 
@@ -203,29 +203,30 @@ class EmailNotificationService:
             True if email sent successfully
         """
         document = self.db.get(Document, document_id)
-        if not document or not document.evidence_item:
+        if not document:
             logger.warning(f"Cannot send rejection email: document {document_id} not found")
             return False
 
-        evidence_item = document.evidence_item
-        if not evidence_item or not evidence_item.vat_period:
-            logger.warning(f"Cannot send rejection email: missing evidence/period for doc {document_id}")
-            return False
-
-        vat_period = evidence_item.vat_period
-        client = vat_period.client
+        # Get client through document -> client relationship
+        client = document.client
         if not client or not client.contact_email:
             logger.warning(f"Cannot send rejection email: client not found or no email")
             return False
 
         logger.info(f"Sending rejection email to {client.contact_email} for document {document.filename}")
 
+        # Get period info from engagement if available
+        engagement = document.engagement
+        period_str = "current period"
+        if engagement and engagement.period_start:
+            period_str = f"Q{((engagement.period_start.month - 1) // 3) + 1} {engagement.period_start.year}"
+
         context_data = {
             "document_name": document.filename,
-            "document_type": document.document_type.value if document.document_type else "document",
+            "document_type": document.document_type_ref.name if document.document_type_ref else "document",
             "rejected_by": rejected_by,
             "rejection_reason": rejection_reason,
-            "vat_period": f"Q{((vat_period.period_start.month - 1) // 3) + 1} {vat_period.period_start.year}" if vat_period.period_start else "current period",
+            "vat_period": period_str,
             "call_to_action": "Upload the corrected document to your Nova dashboard.",
         }
 
@@ -302,36 +303,40 @@ class EmailNotificationService:
             logger.error(f"Error sending missing documents email: {e}", exc_info=True)
             return False
 
-    async def send_vat_return_ready_email(self, client_id: int, period_id: int) -> bool:
+    async def send_vat_return_ready_email(self, client_id: int, engagement_id: int) -> bool:
         """Send email when VAT return is ready for review.
 
         Args:
             client_id: ID of the client
-            period_id: ID of the VAT period
+            engagement_id: ID of the engagement
 
         Returns:
             True if email sent successfully
         """
-        from app.models.vat_period import VATPeriod
+        from app.models.engagement import Engagement
 
         client = self.db.get(Client, client_id)
-        period = self.db.get(VATPeriod, period_id)
+        engagement = self.db.get(Engagement, engagement_id)
 
         if not client or not client.contact_email:
             logger.warning(f"Cannot send VAT ready email: client {client_id} not found or no email")
             return False
 
-        if not period:
-            logger.warning(f"Cannot send VAT ready email: period {period_id} not found")
+        if not engagement:
+            logger.warning(f"Cannot send VAT ready email: engagement {engagement_id} not found")
             return False
 
         logger.info(f"Sending VAT return ready email to {client.contact_email}")
 
+        period_str = "current period"
+        if engagement.period_start:
+            period_str = f"Q{((engagement.period_start.month - 1) // 3) + 1} {engagement.period_start.year}"
+
         context_data = {
-            "vat_period": f"Q{((period.period_start.month - 1) // 3) + 1} {period.period_start.year}" if period.period_start else "current period",
-            "period_start": period.period_start.isoformat() if period.period_start else None,
-            "period_end": period.period_end.isoformat() if period.period_end else None,
-            "due_date": period.due_date.isoformat() if period.due_date else None,
+            "vat_period": period_str,
+            "period_start": engagement.period_start.isoformat() if engagement.period_start else None,
+            "period_end": engagement.period_end.isoformat() if engagement.period_end else None,
+            "due_date": engagement.due_date.isoformat() if engagement.due_date else None,
             "call_to_action": "Review your VAT return in Nova - ready for submission in one click.",
         }
 

@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.models.document import Document, DocumentStatus
-from app.models.evidence import EvidenceItem
+from app.models.engagement import Engagement
 from app.services.validation_service import ValidationService
 
 logger = logging.getLogger(__name__)
@@ -32,19 +32,18 @@ def validate_document(document_id: int) -> None:
         db.close()
 
 
-def validate_period_documents(period_id: int) -> int:
-    """Validate all extracted documents in a VAT period.
+def validate_engagement_documents(engagement_id: int) -> int:
+    """Validate all extracted documents in an engagement.
 
     Returns the number of documents validated.
     """
     db = SessionLocal()
     try:
-        # Get all extracted documents for the period
+        # Get all extracted documents for the engagement
         stmt = (
             select(Document)
-            .join(EvidenceItem)
             .where(
-                EvidenceItem.vat_period_id == period_id,
+                Document.engagement_id == engagement_id,
                 Document.status == DocumentStatus.EXTRACTED,
             )
         )
@@ -65,7 +64,7 @@ def validate_period_documents(period_id: int) -> int:
 def validate_client_documents(client_id: int) -> dict:
     """Validate all extracted documents for a client.
 
-    Runs specialized AI validation on all documents across all VAT periods.
+    Runs specialized AI validation on all documents across all engagements.
     Uses document-specific AI agents (Invoice, Bank Statement, Receipt, etc.)
     for better accuracy.
 
@@ -75,17 +74,13 @@ def validate_client_documents(client_id: int) -> dict:
     Returns:
         dict with validation statistics
     """
-    from app.models.vat_period import VATPeriod
-
     db = SessionLocal()
     try:
-        # Get all extracted documents for all periods belonging to this client
+        # Get all extracted documents for all engagements belonging to this client
         stmt = (
             select(Document)
-            .join(EvidenceItem)
-            .join(VATPeriod)
             .where(
-                VATPeriod.client_id == client_id,
+                Document.client_id == client_id,
                 Document.status.in_([DocumentStatus.EXTRACTED, DocumentStatus.VALIDATED]),
             )
         )
@@ -103,8 +98,7 @@ def validate_client_documents(client_id: int) -> dict:
         for doc in documents:
             try:
                 logger.info(
-                    f"Validating document {doc.id} ({doc.filename}) "
-                    f"- type: {doc.document_type}"
+                    f"Validating document {doc.id} ({doc.filename})"
                 )
                 results = service.validate_document(doc.id, include_ai_validation=True)
 
@@ -132,3 +126,9 @@ def validate_client_documents(client_id: int) -> dict:
         return summary
     finally:
         db.close()
+
+
+# Keep old function name for backwards compatibility
+def validate_period_documents(period_id: int) -> int:
+    """Alias for validate_engagement_documents for backwards compatibility."""
+    return validate_engagement_documents(period_id)

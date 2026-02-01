@@ -12,10 +12,9 @@ from app.schemas.validation import (
     ValidationRunResponse,
     ValidationSummary,
 )
-from app.services.client_service import VATPeriodService
 from app.services.document_service import DocumentService
+from app.services.engagement_service import EngagementService
 from app.services.validation_service import ValidationService
-from app.tasks.validation_tasks import validate_period_documents
 
 router = APIRouter(prefix="/validation", tags=["validation"])
 
@@ -73,44 +72,45 @@ def get_validation_results(
     )
 
 
-@router.get("/summary/{period_id}", response_model=ValidationSummary)
+@router.get("/summary/{engagement_id}", response_model=ValidationSummary)
 def get_validation_summary(
-    period_id: int, db: Session = Depends(get_db)
+    engagement_id: int, db: Session = Depends(get_db)
 ) -> ValidationSummary:
-    """Get validation summary for a VAT period."""
-    period_service = VATPeriodService(db)
-    if not period_service.get(period_id):
+    """Get validation summary for an engagement."""
+    engagement_service = EngagementService(db)
+    if not engagement_service.get(engagement_id):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="VAT period not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found"
         )
 
     service = ValidationService(db)
-    summary = service.get_validation_summary(period_id)
+    summary = service.get_validation_summary(engagement_id)
 
     return ValidationSummary(**summary)
 
 
-@router.post("/run-period/{period_id}")
-def run_period_validation(
-    period_id: int,
+@router.post("/run-engagement/{engagement_id}")
+def run_engagement_validation(
+    engagement_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> dict:
-    """Run validation on all extracted documents in a VAT period.
+    """Run validation on all extracted documents in an engagement.
 
     This runs in the background.
     """
-    period_service = VATPeriodService(db)
-    if not period_service.get(period_id):
+    engagement_service = EngagementService(db)
+    if not engagement_service.get(engagement_id):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="VAT period not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found"
         )
 
-    background_tasks.add_task(validate_period_documents, period_id)
+    from app.tasks.validation_tasks import validate_engagement_documents
+    background_tasks.add_task(validate_engagement_documents, engagement_id)
 
     return {
-        "message": "Validation queued for all extracted documents in the period",
-        "vat_period_id": period_id,
+        "message": "Validation queued for all extracted documents in the engagement",
+        "engagement_id": engagement_id,
     }
 
 
@@ -122,12 +122,10 @@ def run_client_validation(
 ) -> dict:
     """Run validation on all extracted documents for a client.
 
-    Validates all documents across all VAT periods for the client.
+    Validates all documents across all engagements for the client.
     Uses specialized AI agents for document-specific validation.
     """
-    from sqlalchemy import select
     from app.models.client import Client
-    from app.models.vat_period import VATPeriod
     from app.tasks.validation_tasks import validate_client_documents
 
     # Check client exists

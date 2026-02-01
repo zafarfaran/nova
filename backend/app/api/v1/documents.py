@@ -5,16 +5,17 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.document import Document, DocumentStatus
-from app.models.evidence import EvidenceItem
-from app.models.vat_period import VATPeriod
+from app.models.engagement import Engagement
+from app.models.request_set import RequestSet
+from app.models.request_item import RequestItem
 from app.schemas.document import (
     DocumentList,
     DocumentResponse,
@@ -24,7 +25,6 @@ from app.schemas.document import (
     PresignedUrlResponse,
 )
 from app.services.document_service import DocumentService
-from app.services.evidence_service import EvidenceService
 from app.tasks.document_tasks import run_process_document
 
 logger = logging.getLogger(__name__)
@@ -40,8 +40,8 @@ class DocumentSyncRequest(BaseModel):
     file_size: Optional[int] = None
     content_type: Optional[str] = None
     client_id: int
-    checklist_item_id: Optional[int] = None
-    document_type: Optional[str] = None  # invoice, receipt, bank_statement, payroll, etc.
+    engagement_id: Optional[int] = None
+    request_item_id: Optional[int] = None
 
 
 class DocumentSyncResponse(BaseModel):
@@ -95,41 +95,6 @@ async def sync_document(
     """
     logger.info(f"Syncing document: {request.filename} for client {request.client_id}")
 
-    # Find or create an evidence item for this client
-    # First, find the client's active VAT period
-    stmt = select(VATPeriod).where(VATPeriod.client_id == request.client_id).order_by(VATPeriod.id.desc())
-    period = db.scalars(stmt).first()
-
-    if not period:
-        logger.warning(f"No VAT period found for client {request.client_id}")
-        return DocumentSyncResponse(
-            success=False,
-            message="No VAT period found for this client. Create a VAT period first."
-        )
-
-    # Find or create evidence item (use OTHER category for now)
-    from app.models.evidence import EvidenceCategory, EvidenceStatus
-
-    stmt = select(EvidenceItem).where(
-        EvidenceItem.vat_period_id == period.id,
-        EvidenceItem.category == EvidenceCategory.OTHER
-    )
-    evidence_item = db.scalars(stmt).first()
-
-    if not evidence_item:
-        evidence_item = EvidenceItem(
-            vat_period_id=period.id,
-            category=EvidenceCategory.OTHER,
-            description="Documents synced from upload",
-            status=EvidenceStatus.PENDING,
-            expected_count=0,
-            received_count=0,
-        )
-        db.add(evidence_item)
-        db.commit()
-        db.refresh(evidence_item)
-        logger.info(f"Created evidence item {evidence_item.id} for synced documents")
-
     # Extract file key from URL (UploadThing URLs are like https://utfs.io/f/{key})
     s3_key = request.external_url
     if "utfs.io/f/" in request.external_url:
@@ -149,33 +114,16 @@ async def sync_document(
     # Create file hash from URL (since we don't have the actual file content)
     file_hash = hashlib.sha256(request.external_url.encode()).hexdigest()
 
-    # Map document type string to enum if provided
-    doc_type = None
-    if request.document_type:
-        from app.models.document import DocumentType
-        type_mapping = {
-            "invoice": DocumentType.INVOICE,
-            "receipt": DocumentType.RECEIPT,
-            "bank_statement": DocumentType.BANK_STATEMENT,
-            "payroll": DocumentType.PAYROLL if hasattr(DocumentType, "PAYROLL") else DocumentType.OTHER,
-            "contract": DocumentType.CONTRACT,
-            "vat_certificate": DocumentType.VAT_CERTIFICATE,
-            "credit_note": DocumentType.CREDIT_NOTE,
-            "debit_note": DocumentType.DEBIT_NOTE,
-            "other": DocumentType.OTHER,
-        }
-        doc_type = type_mapping.get(request.document_type.lower(), DocumentType.OTHER)
-
     # Create document record
     doc = Document(
-        evidence_item_id=evidence_item.id,
+        client_id=request.client_id,
+        engagement_id=request.engagement_id,
         filename=request.filename,
         s3_key=s3_key,
         file_hash=file_hash,
         content_type=request.content_type or "application/pdf",
         file_size=request.file_size,
         status=DocumentStatus.PENDING,
-        document_type=doc_type,
     )
     db.add(doc)
     db.commit()
@@ -183,9 +131,12 @@ async def sync_document(
 
     logger.info(f"Created document {doc.id} for {request.filename}")
 
-    # Update evidence item count
-    evidence_item.received_count += 1
-    db.commit()
+    # Link to request item if provided
+    if request.request_item_id:
+        request_item = db.get(RequestItem, request.request_item_id)
+        if request_item and doc not in request_item.documents:
+            request_item.documents.append(doc)
+            db.commit()
 
     # Queue for AI extraction
     background_tasks.add_task(run_process_document, doc.id)
@@ -198,25 +149,28 @@ async def sync_document(
     )
 
 
-@router.post("/process-all/{period_id}", response_model=BatchProcessResponse)
+@router.post("/process-all/{engagement_id}", response_model=BatchProcessResponse)
 async def process_all_documents(
-    period_id: int,
+    engagement_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     force: bool = False,
 ) -> BatchProcessResponse:
-    """Process all pending documents for a VAT period.
+    """Process all pending documents for an engagement.
 
     This triggers AI extraction for all documents that haven't been processed yet.
     """
-    logger.info(f"Processing all documents for period {period_id}")
+    logger.info(f"Processing all documents for engagement {engagement_id}")
 
-    # Get all documents for this period that need processing
-    stmt = (
-        select(Document)
-        .join(EvidenceItem)
-        .where(EvidenceItem.vat_period_id == period_id)
-    )
+    # Verify engagement exists
+    engagement = db.get(Engagement, engagement_id)
+    if not engagement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found"
+        )
+
+    # Get all documents for this engagement that need processing
+    stmt = select(Document).where(Document.engagement_id == engagement_id)
 
     if not force:
         stmt = stmt.where(Document.status == DocumentStatus.PENDING)
@@ -284,31 +238,30 @@ async def reprocess_stuck_documents(
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
-    evidence_item_id: int,
+    client_id: int,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    engagement_id: int | None = None,
+    request_item_id: int | None = None,
     auto_process: bool = True,
 ) -> DocumentUploadResponse:
-    """Upload a document for an evidence item.
+    """Upload a document for a client.
 
     Args:
-        evidence_item_id: ID of the evidence item to attach the document to
+        client_id: ID of the client
         file: The file to upload
+        engagement_id: Optional ID of the engagement
+        request_item_id: Optional ID of the request item to link
         auto_process: If True, automatically queue the document for AI processing
     """
-    evidence_service = EvidenceService(db)
-    if not evidence_service.get(evidence_item_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Evidence item not found"
-        )
-
     service = DocumentService(db)
     try:
         doc, is_duplicate = service.upload(
             file=file.file,
             filename=file.filename or "unnamed",
-            evidence_item_id=evidence_item_id,
+            client_id=client_id,
+            engagement_id=engagement_id,
             content_type=file.content_type or "application/octet-stream",
         )
     except ValueError as e:
@@ -317,6 +270,13 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+    # Link to request item if provided
+    if request_item_id and not is_duplicate:
+        request_item = db.get(RequestItem, request_item_id)
+        if request_item and doc not in request_item.documents:
+            request_item.documents.append(doc)
+            db.commit()
 
     # Queue for AI processing if not a duplicate and auto_process is enabled
     if not is_duplicate and auto_process:
@@ -333,25 +293,26 @@ async def upload_document(
 
 @router.get("", response_model=DocumentList)
 def list_documents(
-    evidence_item_id: int | None = None,
-    vat_period_id: int | None = None,
-    skip: int = 0,
-    limit: int = 100,
+    client_id: int | None = None,
+    engagement_id: int | None = None,
+    request_item_id: int | None = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> DocumentList:
-    """List documents, optionally filtered by evidence item or VAT period."""
+    """List documents, optionally filtered by client, engagement, or request item."""
     service = DocumentService(db)
 
-    if evidence_item_id:
-        docs, total = service.list_by_evidence_item(
-            evidence_item_id, skip=skip, limit=limit
-        )
-    elif vat_period_id:
-        docs, total = service.list_by_period(vat_period_id, skip=skip, limit=limit)
+    if request_item_id:
+        docs, total = service.list_by_request_item(request_item_id, skip=skip, limit=limit)
+    elif engagement_id:
+        docs, total = service.list_by_engagement(engagement_id, skip=skip, limit=limit)
+    elif client_id:
+        docs, total = service.list_by_client(client_id, skip=skip, limit=limit)
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Either evidence_item_id or vat_period_id is required",
+            detail="Either client_id, engagement_id, or request_item_id is required",
         )
 
     return DocumentList(
@@ -443,6 +404,9 @@ def get_extracted_data(doc_id: int, db: Session = Depends(get_db)) -> ExtractedD
             status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
         )
 
+    # Get extracted data from latest version if available
+    extracted = doc.get_extracted_data() or {}
+
     return ExtractedData(
         invoice_number=doc.invoice_number,
         invoice_date=doc.invoice_date,
@@ -456,7 +420,7 @@ def get_extracted_data(doc_id: int, db: Session = Depends(get_db)) -> ExtractedD
         vat_rate=doc.vat_rate,
         currency=doc.currency,
         description=doc.description,
-        raw_data=doc.extracted_data,
+        raw_data=extracted,
     )
 
 
@@ -473,8 +437,6 @@ def process_document_endpoint(
         doc_id: ID of the document to process
         force: If True, re-process even if already extracted. Defaults to False.
     """
-    from app.models.document import DocumentStatus
-
     service = DocumentService(db)
     doc = service.get(doc_id)
     if not doc:

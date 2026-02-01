@@ -10,7 +10,7 @@ from app.models.chaser import ChaserStatus
 class ChaserRequestCreate(BaseModel):
     """Schema for creating a Chaser Request."""
 
-    vat_period_id: int
+    engagement_id: int
     recipient_email: EmailStr
     recipient_name: str | None = None
     requested_items: list[str] = []
@@ -23,7 +23,7 @@ class ChaserRequestResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    vat_period_id: int
+    engagement_id: int
     recipient_email: str
     recipient_name: str | None
     requested_items: list

@@ -1,6 +1,6 @@
 """API routes for Chaser management."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -13,7 +13,7 @@ from app.schemas.chaser import (
     ChaserResponseResponse,
 )
 from app.services.chaser_service import ChaserService
-from app.services.client_service import VATPeriodService
+from app.services.engagement_service import EngagementService
 
 router = APIRouter(prefix="/chaser", tags=["chaser"])
 
@@ -25,15 +25,15 @@ def create_chaser_request(
     data: ChaserRequestCreate, db: Session = Depends(get_db)
 ) -> ChaserRequestResponse:
     """Create a new chaser request."""
-    period_service = VATPeriodService(db)
-    if not period_service.get(data.vat_period_id):
+    engagement_service = EngagementService(db)
+    if not engagement_service.get(data.engagement_id):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="VAT period not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found"
         )
 
     service = ChaserService(db)
     chaser = service.create(
-        vat_period_id=data.vat_period_id,
+        engagement_id=data.engagement_id,
         recipient_email=data.recipient_email,
         recipient_name=data.recipient_name,
         requested_items=data.requested_items,
@@ -44,14 +44,14 @@ def create_chaser_request(
 
 @router.get("/requests", response_model=ChaserRequestList)
 def list_chaser_requests(
-    vat_period_id: int,
-    skip: int = 0,
-    limit: int = 100,
+    engagement_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> ChaserRequestList:
-    """List all chaser requests for a VAT period."""
+    """List all chaser requests for an engagement."""
     service = ChaserService(db)
-    chasers, total = service.list_by_period(vat_period_id, skip=skip, limit=limit)
+    chasers, total = service.list_by_engagement(engagement_id, skip=skip, limit=limit)
     return ChaserRequestList(
         items=[ChaserRequestResponse.model_validate(c) for c in chasers], total=total
     )
@@ -136,23 +136,23 @@ def remind_chaser_request(
     return ChaserRequestResponse.model_validate(chaser)
 
 
-@router.post("/auto-chase/{period_id}", response_model=ChaserRequestResponse)
+@router.post("/auto-chase/{engagement_id}", response_model=ChaserRequestResponse)
 def auto_chase(
-    period_id: int, data: AutoChaseRequest, db: Session = Depends(get_db)
+    engagement_id: int, data: AutoChaseRequest, db: Session = Depends(get_db)
 ) -> ChaserRequestResponse:
-    """Automatically create a chaser for all gaps in a VAT period."""
-    period_service = VATPeriodService(db)
-    if not period_service.get(period_id):
+    """Automatically create a chaser for all pending items in an engagement."""
+    engagement_service = EngagementService(db)
+    if not engagement_service.get(engagement_id):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="VAT period not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found"
         )
 
     service = ChaserService(db)
-    chaser = service.auto_chase(period_id, data.recipient_email)
+    chaser = service.auto_chase(engagement_id, data.recipient_email)
     if not chaser:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No gaps found to chase",
+            detail="No pending items found to chase",
         )
     return ChaserRequestResponse.model_validate(chaser)
 
