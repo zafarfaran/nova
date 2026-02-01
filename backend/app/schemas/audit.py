@@ -1,30 +1,29 @@
-"""Pydantic schemas for Audit Trail."""
+"""Pydantic schemas for Audit Log."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 
-class AuditTrailEntryResponse(BaseModel):
-    """Schema for Audit Trail Entry response."""
+class AuditLogResponse(BaseModel):
+    """Schema for Audit Log response."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    vat_period_id: int
-    action: str
-    description: str | None
-    performed_by: str | None
-    performed_at: datetime
+    client_id: int | None
+    engagement_id: int | None
     entity_type: str | None
     entity_id: int | None
-    old_value: str | None
-    new_value: str | None
+    action: str
+    actor_contact_id: int | None
+    changes: dict[str, Any]
     created_at: datetime
 
 
-class AuditTrailList(BaseModel):
-    """Schema for listing audit trail entries."""
+class AuditLogList(BaseModel):
+    """Schema for listing audit log entries."""
 
-    items: list[AuditTrailEntryResponse]
+    items: list[AuditLogResponse]
     total: int

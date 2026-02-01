@@ -6,19 +6,20 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.document import DocumentStatus, DocumentType
+from app.models.document import DocumentStatus
 
 
 class DocumentBase(BaseModel):
     """Base schema for Document."""
 
-    evidence_item_id: int | None = None
-    document_type: DocumentType | None = None
+    engagement_id: int | None = None
+    document_type_id: int | None = None
 
 
 class DocumentCreate(DocumentBase):
     """Schema for creating a Document (internal use)."""
 
+    client_id: int
     filename: str
     s3_key: str
     file_hash: str
@@ -29,8 +30,8 @@ class DocumentCreate(DocumentBase):
 class DocumentUpdate(BaseModel):
     """Schema for updating a Document."""
 
-    evidence_item_id: int | None = None
-    document_type: DocumentType | None = None
+    engagement_id: int | None = None
+    document_type_id: int | None = None
     status: DocumentStatus | None = None
 
 
@@ -58,14 +59,15 @@ class DocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    evidence_item_id: int | None
+    client_id: int
+    engagement_id: int | None
+    document_type_id: int | None
     filename: str
     s3_key: str
     file_hash: str
     content_type: str | None
     file_size: int | None
     status: DocumentStatus
-    document_type: DocumentType | None
     processing_error: str | None
     invoice_number: str | None
     invoice_date: date | None

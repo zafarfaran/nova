@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.vat_period import VATPeriod
+    from app.models.engagement import Engagement
 
 
 class ChaserStatus(str, enum.Enum):
@@ -26,13 +26,13 @@ class ChaserStatus(str, enum.Enum):
 
 
 class ChaserRequest(Base, TimestampMixin):
-    """Request for missing VAT evidence."""
+    """Request for missing evidence."""
 
     __tablename__ = "chaser_requests"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    vat_period_id: Mapped[int] = mapped_column(
-        ForeignKey("vat_periods.id"), nullable=False
+    engagement_id: Mapped[int] = mapped_column(
+        ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
     )
 
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -61,7 +61,10 @@ class ChaserRequest(Base, TimestampMixin):
     reminder_count: Mapped[int] = mapped_column(default=0)
 
     # Relationships
-    vat_period: Mapped["VATPeriod"] = relationship("VATPeriod")
+    engagement: Mapped["Engagement"] = relationship("Engagement", back_populates="chaser_requests")
+    responses: Mapped[list["ChaserResponse"]] = relationship(
+        "ChaserResponse", back_populates="chaser_request", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<ChaserRequest(id={self.id}, recipient={self.recipient_email}, status={self.status})>"
@@ -74,7 +77,7 @@ class ChaserResponse(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     chaser_request_id: Mapped[int] = mapped_column(
-        ForeignKey("chaser_requests.id"), nullable=False
+        ForeignKey("chaser_requests.id", ondelete="CASCADE"), nullable=False
     )
 
     # Response tracking
@@ -84,7 +87,7 @@ class ChaserResponse(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(String(2000))
 
     # Relationship
-    chaser_request: Mapped["ChaserRequest"] = relationship("ChaserRequest")
+    chaser_request: Mapped["ChaserRequest"] = relationship("ChaserRequest", back_populates="responses")
 
     def __repr__(self) -> str:
         return f"<ChaserResponse(id={self.id}, chaser_request_id={self.chaser_request_id})>"

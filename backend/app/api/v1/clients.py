@@ -15,7 +15,8 @@ from app.schemas.client import (
     OnboardingCompleteResponse,
 )
 from app.services.audit_service import AuditService
-from app.services.client_service import ClientService, VATPeriodService
+from app.services.client_service import ClientService
+from app.services.engagement_service import EngagementService
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -77,12 +78,28 @@ def update_client(
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_client(client_id: int, db: Session = Depends(get_db)) -> None:
-    """Delete a client."""
+    """Delete a client.
+    
+    WARNING: This operation will fail if the client has associated documents or engagements.
+    The database enforces RESTRICT constraints to prevent accidental data loss.
+    
+    For production use, ensure:
+    1. Database backups are in place
+    2. All documents and engagements are removed or archived first
+    3. Consider implementing a soft-delete pattern for production
+    """
     service = ClientService(db)
-    if not service.delete(client_id):
+    try:
+        if not service.delete(client_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
+            )
+    except ValueError as e:
+        # Handle validation errors from service layer
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
-        )
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        ) from e
 
 
 @router.post(
@@ -110,14 +127,14 @@ def onboarding_complete(
             status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
         )
 
-    vat_period_id = data.vat_period_id
-    if vat_period_id is not None:
-        period_service = VATPeriodService(db)
-        period = period_service.get(vat_period_id)
-        if not period or period.client_id != client_id:
+    engagement_id = data.engagement_id if hasattr(data, 'engagement_id') else data.vat_period_id
+    if engagement_id is not None:
+        engagement_service = EngagementService(db)
+        engagement = engagement_service.get(engagement_id)
+        if not engagement or engagement.client_id != client_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="VAT period not found for client",
+                detail="Engagement not found for client",
             )
 
         description = (
@@ -127,22 +144,21 @@ def onboarding_complete(
             f" total={data.total_items}"
         )
         AuditService(db).log(
-            period_id=period.id,
+            engagement_id=engagement.id,
             action="onboarding_complete",
             description=description,
-            performed_by="onboarding_portal",
             entity_type="client",
             entity_id=client_id,
         )
         logger.info(
-            "Onboarding completion logged for client %s (period %s)",
+            "Onboarding completion logged for client %s (engagement %s)",
             client_id,
-            period.id,
+            engagement.id,
         )
 
     return OnboardingCompleteResponse(
         success=True,
         message="Onboarding completion recorded",
         client_id=client_id,
-        vat_period_id=vat_period_id,
+        engagement_id=engagement_id,
     )

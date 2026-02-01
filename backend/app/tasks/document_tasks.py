@@ -10,11 +10,130 @@ from sqlalchemy.orm import Session
 
 from app.ai import get_ai_provider
 from app.core.database import SessionLocal
-from app.models.document import Document, DocumentStatus, DocumentType
+from app.models.document import Document, DocumentStatus
+from app.models.document_type import DocumentType
+from app.models.document_version import DocumentVersion, ExtractionStatus
+from app.models.file_object import FileObject
 from app.services.pdf_extraction_service import PDFExtractionService
 from app.storage import get_storage
 
 logger = logging.getLogger(__name__)
+
+
+def _get_or_create_file_object(db: Session, doc: Document, content: bytes) -> FileObject:
+    """Get existing or create new FileObject for a document.
+    
+    This function checks if a FileObject already exists for the document's s3_key.
+    If not, it creates a new one with the storage metadata.
+    """
+    from sqlalchemy import select
+    
+    # Check if FileObject already exists for this key
+    stmt = select(FileObject).where(FileObject.object_key == doc.s3_key)
+    existing = db.scalars(stmt).first()
+    if existing:
+        return existing
+    
+    # Create new FileObject
+    file_object = FileObject(
+        storage_provider="s3",  # or detect from config
+        bucket="documents",  # or get from config
+        object_key=doc.s3_key,
+        byte_size=len(content),
+        mime_type=doc.content_type,
+        checksum_sha256=doc.file_hash,
+    )
+    db.add(file_object)
+    db.flush()  # Get the ID
+    return file_object
+
+
+def _get_or_create_document_version(
+    db: Session, 
+    doc: Document, 
+    file_object: FileObject
+) -> DocumentVersion:
+    """Get existing or create new DocumentVersion for a document.
+    
+    This function checks if a DocumentVersion already exists for this document
+    and file object. If not, it creates a new one with proper race condition handling.
+    
+    Uses retry logic to handle concurrent version creation attempts, relying on
+    the database unique constraint on (document_id, version_no) to prevent duplicates.
+    """
+    from sqlalchemy import select, func
+    from sqlalchemy.exc import IntegrityError
+    
+    # Check if version already exists for this document and file
+    stmt = select(DocumentVersion).where(
+        DocumentVersion.document_id == doc.id,
+        DocumentVersion.file_object_id == file_object.id
+    )
+    existing = db.scalars(stmt).first()
+    if existing:
+        return existing
+    
+    # Retry logic to handle race conditions
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            # Get the current max version number (re-query each attempt)
+            max_version_stmt = select(func.max(DocumentVersion.version_no)).where(
+                DocumentVersion.document_id == doc.id
+            )
+            max_version = db.scalar(max_version_stmt) or 0
+            
+            # Create new DocumentVersion
+            version = DocumentVersion(
+                document_id=doc.id,
+                file_object_id=file_object.id,
+                version_no=max_version + 1,
+                extraction_status=ExtractionStatus.PENDING,
+            )
+            db.add(version)
+            db.flush()  # Get the ID - this will raise IntegrityError if constraint violated
+            return version
+            
+        except IntegrityError as e:
+            # Check if this is a unique constraint violation on (document_id, version_no)
+            # Different databases format errors differently, so check multiple ways
+            error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+            error_code = getattr(e.orig, 'pgcode', None) if hasattr(e, 'orig') else None
+            
+            # PostgreSQL unique violation error code is 23505
+            is_unique_violation = (
+                error_code == '23505'  # PostgreSQL unique violation
+                or 'uq_document_versions_document_version' in error_str
+                or 'unique constraint' in error_str.lower()
+                or 'UNIQUE constraint failed' in error_str  # SQLite format
+            )
+            
+            if is_unique_violation:
+                # Another process created a version with the same number - retry
+                db.rollback()
+                if attempt < max_retries - 1:
+                    logger.debug(
+                        f"Race condition detected creating DocumentVersion for doc {doc.id}, "
+                        f"retrying (attempt {attempt + 1}/{max_retries})"
+                    )
+                    continue
+                else:
+                    # Last attempt failed - re-check if version was created by another process
+                    existing = db.scalars(stmt).first()
+                    if existing:
+                        return existing
+                    # If still not found, raise the error
+                    logger.error(
+                        f"Failed to create DocumentVersion for doc {doc.id} after {max_retries} attempts"
+                    )
+                    raise
+            else:
+                # Different integrity error - re-raise
+                db.rollback()
+                raise
+    
+    # Should not reach here, but just in case
+    raise RuntimeError(f"Failed to create DocumentVersion for doc {doc.id} after {max_retries} attempts")
 
 
 async def process_document(document_id: int, force: bool = False) -> None:
@@ -59,6 +178,10 @@ async def process_document(document_id: int, force: bool = False) -> None:
         # Update status to processing
         doc.status = DocumentStatus.PROCESSING
         db.commit()
+        
+        # Initialize variables for new schema support
+        file_object = None
+        doc_version = None
 
         # Download from storage (S3 or UploadThing)
         storage = get_storage()
@@ -72,6 +195,27 @@ async def process_document(document_id: int, force: bool = False) -> None:
                 document_id,
                 time.monotonic() - download_start,
             )
+            
+            # Create FileObject and DocumentVersion for new schema
+            try:
+                file_object = _get_or_create_file_object(db, doc, content)
+                doc_version = _get_or_create_document_version(db, doc, file_object)
+                doc_version.extraction_status = ExtractionStatus.PROCESSING
+                db.commit()
+                logger.info(
+                    "Created/retrieved FileObject %s and DocumentVersion %s for document %s",
+                    file_object.id,
+                    doc_version.id,
+                    document_id,
+                )
+            except Exception as ve:
+                logger.warning(
+                    "Could not create FileObject/DocumentVersion for document %s: %s",
+                    document_id,
+                    ve,
+                )
+                # Continue processing - this is for backwards compatibility
+                
         except Exception as e:
             doc.status = DocumentStatus.FAILED
             doc.processing_error = f"Storage download failed: {str(e)}"
@@ -212,8 +356,18 @@ async def process_document(document_id: int, force: bool = False) -> None:
         # Normalize extracted data for downstream validators
         normalized_data = _normalize_extracted_data(extracted_data, doc_type_hint)
 
-        # Update document with extracted data
+        # Update document with extracted data (legacy field - kept for backwards compatibility)
         doc.extracted_data = normalized_data
+        
+        # Also update DocumentVersion with extracted data (new schema)
+        if doc_version:
+            doc_version.extracted_data = normalized_data
+            doc_version.extraction_status = ExtractionStatus.EXTRACTED
+            logger.info(
+                "Updated DocumentVersion %s with extracted_data for document %s",
+                doc_version.id,
+                document_id,
+            )
 
         extraction_error = None
         if not extracted_data:
@@ -224,6 +378,10 @@ async def process_document(document_id: int, force: bool = False) -> None:
         if extraction_error:
             doc.status = DocumentStatus.FAILED
             doc.processing_error = f"Extraction error: {extraction_error}"
+            # Also update DocumentVersion status
+            if doc_version:
+                doc_version.extraction_status = ExtractionStatus.FAILED
+                doc_version.processing_error = extraction_error
             db.commit()
             logger.warning(
                 "Document %s marked FAILED due to extraction error: %s",
@@ -467,16 +625,16 @@ def _normalize_extracted_data(extracted_data: dict, doc_type_hint: str | None) -
                     setattr(doc, doc_field, parsed)
                     break
 
-    # Set document type
-    if doc_type := extracted_data.get("detected_document_type"):
-        try:
-            doc.document_type = DocumentType(doc_type.upper())
-        except ValueError:
-            # Try lowercase
-            try:
-                doc.document_type = DocumentType(doc_type.lower())
-            except ValueError:
-                pass
+    # Set document type by looking up in database
+    if doc_type_code := extracted_data.get("detected_document_type"):
+        from sqlalchemy import select
+        # Try to find the document type by code (case-insensitive)
+        doc_type_stmt = select(DocumentType).where(
+            DocumentType.code.ilike(doc_type_code)
+        )
+        doc_type = db.scalars(doc_type_stmt).first()
+        if doc_type:
+            doc.document_type_id = doc_type.id
 
 
 def _parse_date(value: str) -> "datetime.date | None":

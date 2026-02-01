@@ -16,11 +16,11 @@ from app.core.vat_rules import (
     VALID_VAT_RATES,
     VAT_NUMBER_PATTERN,
 )
-from app.models.document import Document, DocumentStatus, DocumentType
+from app.models.document import Document, DocumentStatus
+from app.models.document_version import DocumentVersion
 from app.utils.bank_statement_tools import reconcile_balances
-from app.models.evidence import EvidenceItem
 from app.models.validation import RuleType, ValidationResult, ValidationStatus
-from app.models.vat_period import VATPeriod
+from app.models.engagement import Engagement
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,27 @@ class ValidationService:
         if self._ai_provider is None:
             self._ai_provider = AnthropicProvider()
         return self._ai_provider
+    
+    def _get_extracted_data(self, doc: Document) -> dict[str, Any] | None:
+        """Get extracted data from the document, preferring DocumentVersion if available.
+        
+        This method provides backwards compatibility - it first checks
+        the latest DocumentVersion, then falls back to the document's
+        extracted_data field.
+        """
+        # Try to get from latest DocumentVersion first (new schema)
+        if doc.versions:
+            latest_version = max(doc.versions, key=lambda v: v.version_no)
+            if latest_version.extracted_data:
+                logger.debug(
+                    "Using extracted_data from DocumentVersion %s for document %s",
+                    latest_version.id,
+                    doc.id,
+                )
+                return latest_version.extracted_data
+        
+        # Fall back to document's extracted_data (legacy)
+        return doc.extracted_data
 
     def validate_document(
         self, document_id: int, include_ai_validation: bool = True
@@ -142,7 +163,8 @@ class ValidationService:
         results.extend(type_specific_results)
 
         # Run AI anomaly detection if enabled and document has extracted data
-        if include_ai_validation and doc.extracted_data:
+        extracted_data = self._get_extracted_data(doc)
+        if include_ai_validation and extracted_data:
             ai_results = self._validate_ai_anomaly(doc)
             results.extend(ai_results)
 
@@ -367,7 +389,7 @@ class ValidationService:
 
     def _validate_bank_statement_required_fields(self, doc: Document) -> ValidationResult:
         """Validate required fields for bank statements."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
 
         required_checks = [
             ("account_number", extracted.get("account_number"), "Account number needed to identify bank account"),
@@ -403,7 +425,7 @@ class ValidationService:
 
     def _validate_bank_statement_period(self, doc: Document) -> ValidationResult:
         """Validate bank statement period matches VAT period."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         period_start = extracted.get("period_start")
         period_end = extracted.get("period_end")
 
@@ -430,7 +452,7 @@ class ValidationService:
 
     def _validate_bank_statement_balance(self, doc: Document) -> ValidationResult:
         """Validate bank statement balance reconciliation."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         opening = extracted.get("opening_balance")
         closing = extracted.get("closing_balance")
         total_credits = extracted.get("total_credits")
@@ -485,7 +507,7 @@ class ValidationService:
 
     def _validate_bank_account_format(self, doc: Document) -> ValidationResult:
         """Validate UK bank account number format."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         account_number = extracted.get("account_number")
         sort_code = extracted.get("sort_code")
 
@@ -537,7 +559,7 @@ class ValidationService:
 
     def _validate_receipt_required_fields(self, doc: Document) -> ValidationResult:
         """Validate required fields for receipts."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
 
         required_checks = [
             ("vendor_name", extracted.get("vendor_name") or doc.supplier_name, "Vendor/merchant name needed for expense categorization"),
@@ -574,7 +596,7 @@ class ValidationService:
         from datetime import datetime, timedelta
 
         receipt_date = doc.invoice_date
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         if not receipt_date and extracted.get("receipt_date"):
             try:
                 receipt_date = datetime.strptime(extracted["receipt_date"], "%Y-%m-%d").date()
@@ -617,7 +639,7 @@ class ValidationService:
 
     def _validate_receipt_vat_requirements(self, doc: Document) -> ValidationResult:
         """Validate VAT invoice requirements for receipts over £250."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         total = doc.gross_amount or extracted.get("total_amount")
 
         if not total:
@@ -686,7 +708,7 @@ class ValidationService:
 
     def _validate_payroll_bank_account_match(self, doc: Document) -> ValidationResult:
         """Validate payroll employee name matches bank account holder name."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         employee_name = (
             extracted.get("employee_name")
             or extracted.get("employee_full_name")
@@ -701,42 +723,40 @@ class ValidationService:
                 message="No employee name found to match against bank account",
             )
 
-        if not doc.evidence_item_id:
+        if not doc.engagement_id:
             return ValidationResult(
                 document_id=doc.id,
                 rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
                 status=ValidationStatus.SKIPPED,
-                message="Payroll document not linked to a VAT period",
+                message="Payroll document not linked to an engagement",
             )
 
-        evidence_item = self.db.get(EvidenceItem, doc.evidence_item_id)
-        if not evidence_item:
-            return ValidationResult(
-                document_id=doc.id,
-                rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
-                status=ValidationStatus.SKIPPED,
-                message="Evidence item not found for payroll document",
-            )
-
+        # Find bank statements in the same engagement
         stmt = (
             select(Document)
-            .join(EvidenceItem, Document.evidence_item_id == EvidenceItem.id)
             .where(
-                EvidenceItem.vat_period_id == evidence_item.vat_period_id,
-                Document.document_type == DocumentType.BANK_STATEMENT,
+                Document.engagement_id == doc.engagement_id,
+                Document.id != doc.id,
             )
             .order_by(Document.updated_at.desc())
         )
-        bank_doc = self.db.scalars(stmt).first()
-        if not bank_doc or not bank_doc.extracted_data:
+        bank_doc = None
+        for candidate in self.db.scalars(stmt).all():
+            extracted = self._get_extracted_data(candidate)
+            if extracted and extracted.get("document_type") == "bank_statement":
+                bank_doc = candidate
+                break
+
+        bank_extracted = self._get_extracted_data(bank_doc) if bank_doc else None
+        if not bank_doc or not bank_extracted:
             return ValidationResult(
                 document_id=doc.id,
                 rule_type=RuleType.ACCOUNT_HOLDER_MATCH,
                 status=ValidationStatus.SKIPPED,
-                message="No bank statement data found for this VAT period",
+                message="No bank statement data found for this engagement",
             )
 
-        bank_data = bank_doc.extracted_data or {}
+        bank_data = bank_extracted or {}
         account_holder = (
             bank_data.get("account_holder_name")
             or bank_data.get("account_name")
@@ -779,7 +799,7 @@ class ValidationService:
 
     def _validate_payroll_required_fields(self, doc: Document) -> ValidationResult:
         """Validate required fields for payroll documents."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
 
         required_checks = [
             ("employee_name", extracted.get("employee_name"), "Employee name is required for payroll records"),
@@ -817,7 +837,7 @@ class ValidationService:
     def _validate_payroll_ni_number(self, doc: Document) -> ValidationResult:
         """Validate National Insurance number format."""
         import re
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         ni_number = extracted.get("ni_number") or extracted.get("national_insurance_number")
 
         if not ni_number:
@@ -864,7 +884,7 @@ class ValidationService:
     def _validate_payroll_tax_code(self, doc: Document) -> ValidationResult:
         """Validate tax code format."""
         import re
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         tax_code = extracted.get("tax_code")
 
         if not tax_code:
@@ -935,7 +955,7 @@ class ValidationService:
 
     def _validate_payroll_calculations(self, doc: Document) -> ValidationResult:
         """Validate net pay calculation: gross - deductions = net."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
 
         gross = self._parse_amount(extracted.get("gross_pay") or extracted.get("gross_salary"))
         net = self._parse_amount(extracted.get("net_pay") or extracted.get("take_home_pay"))
@@ -998,7 +1018,7 @@ class ValidationService:
 
     def _validate_payroll_ni_contributions(self, doc: Document) -> ValidationResult:
         """Validate NI contributions are reasonable for earnings."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
 
         gross = self._parse_amount(extracted.get("gross_pay") or extracted.get("gross_salary"))
         ni = self._parse_amount(extracted.get("national_insurance") or extracted.get("ni") or extracted.get("ni_employee"))
@@ -1091,7 +1111,7 @@ class ValidationService:
 
     def _validate_vat_cert_required_fields(self, doc: Document) -> ValidationResult:
         """Validate required fields for VAT certificates."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
 
         required_checks = [
             ("vat_number", extracted.get("vat_number") or doc.supplier_vat_number, "VAT registration number is the primary identifier"),
@@ -1125,7 +1145,7 @@ class ValidationService:
 
     def _validate_vat_cert_number(self, doc: Document) -> ValidationResult:
         """Validate VAT number format on certificate."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         vat_number = extracted.get("vat_number") or doc.supplier_vat_number
 
         if not vat_number:
@@ -1173,7 +1193,7 @@ class ValidationService:
         """Validate VAT certificate effective date."""
         from datetime import datetime
 
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         effective_date_str = extracted.get("effective_date") or extracted.get("registration_date")
 
         if not effective_date_str:
@@ -1250,7 +1270,7 @@ class ValidationService:
 
     def _validate_contract_required_fields(self, doc: Document) -> ValidationResult:
         """Validate required fields for contracts."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
 
         required_checks = [
             ("party_1", extracted.get("party_1_name") or extracted.get("party_1"), "First party name needed to identify contractual relationship"),
@@ -1284,7 +1304,7 @@ class ValidationService:
 
     def _validate_contract_parties(self, doc: Document) -> ValidationResult:
         """Validate contract parties are distinct."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         party_1 = extracted.get("party_1_name") or extracted.get("party_1") or ""
         party_2 = extracted.get("party_2_name") or extracted.get("party_2") or ""
 
@@ -1316,7 +1336,7 @@ class ValidationService:
         """Validate contract dates are logical."""
         from datetime import datetime
 
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         start_date_str = extracted.get("start_date")
         end_date_str = extracted.get("end_date")
 
@@ -1366,7 +1386,7 @@ class ValidationService:
 
     def _validate_contract_vat_treatment(self, doc: Document) -> ValidationResult:
         """Check if contract specifies VAT treatment."""
-        extracted = doc.extracted_data or {}
+        extracted = self._get_extracted_data(doc) or {}
         contract_value = extracted.get("contract_value")
         vat_inclusive = extracted.get("vat_inclusive")
         vat_mentioned = extracted.get("vat_rate") or extracted.get("vat_amount")
@@ -1408,7 +1428,8 @@ class ValidationService:
 
         Returns a list of ValidationResult objects for each anomaly detected.
         """
-        if not doc.extracted_data:
+        extracted_data = self._get_extracted_data(doc)
+        if not extracted_data:
             return [
                 ValidationResult(
                     document_id=doc.id,
@@ -1436,7 +1457,7 @@ class ValidationService:
             asyncio.set_event_loop(loop)
             try:
                 verification_result = loop.run_until_complete(
-                    registry.verify_document(document_type, doc.extracted_data)
+                    registry.verify_document(document_type, extracted_data)
                 )
             finally:
                 loop.close()
@@ -1609,48 +1630,39 @@ class ValidationService:
                 message="No invoice date to validate",
             )
 
-        if not doc.evidence_item_id:
+        if not doc.engagement_id:
             return ValidationResult(
                 document_id=doc.id,
                 rule_type=RuleType.DATE_IN_PERIOD,
                 status=ValidationStatus.SKIPPED,
-                message="Document not linked to evidence item",
+                message="Document not linked to engagement",
             )
 
-        evidence_item = self.db.get(EvidenceItem, doc.evidence_item_id)
-        if not evidence_item:
+        engagement = self.db.get(Engagement, doc.engagement_id)
+        if not engagement:
             return ValidationResult(
                 document_id=doc.id,
                 rule_type=RuleType.DATE_IN_PERIOD,
                 status=ValidationStatus.SKIPPED,
-                message="Evidence item not found",
+                message="Engagement not found",
             )
 
-        period = self.db.get(VATPeriod, evidence_item.vat_period_id)
-        if not period:
-            return ValidationResult(
-                document_id=doc.id,
-                rule_type=RuleType.DATE_IN_PERIOD,
-                status=ValidationStatus.SKIPPED,
-                message="VAT period not found",
-            )
-
-        if period.period_start <= doc.invoice_date <= period.period_end:
+        if engagement.period_start <= doc.invoice_date <= engagement.period_end:
             return ValidationResult(
                 document_id=doc.id,
                 rule_type=RuleType.DATE_IN_PERIOD,
                 status=ValidationStatus.PASSED,
-                message="Invoice date within VAT period",
+                message="Invoice date within engagement period",
             )
 
         return ValidationResult(
             document_id=doc.id,
             rule_type=RuleType.DATE_IN_PERIOD,
             status=ValidationStatus.FAILED,
-            message=f"Invoice date {doc.invoice_date} outside VAT period "
-            f"({period.period_start} - {period.period_end})",
+            message=f"Invoice date {doc.invoice_date} outside engagement period "
+            f"({engagement.period_start} - {engagement.period_end})",
             field_name="invoice_date",
-            expected_value=f"{period.period_start} - {period.period_end}",
+            expected_value=f"{engagement.period_start} - {engagement.period_end}",
             actual_value=str(doc.invoice_date),
         )
 
@@ -1811,14 +1823,10 @@ class ValidationService:
         )
         return list(self.db.scalars(stmt).all())
 
-    def get_validation_summary(self, period_id: int) -> dict:
-        """Get validation summary for a VAT period."""
-        # Get all documents for the period
-        stmt = (
-            select(Document)
-            .join(EvidenceItem)
-            .where(EvidenceItem.vat_period_id == period_id)
-        )
+    def get_validation_summary(self, engagement_id: int) -> dict:
+        """Get validation summary for an engagement."""
+        # Get all documents for the engagement
+        stmt = select(Document).where(Document.engagement_id == engagement_id)
         documents = list(self.db.scalars(stmt).all())
 
         total_docs = len(documents)
@@ -1830,7 +1838,7 @@ class ValidationService:
             if d.status in [DocumentStatus.PENDING, DocumentStatus.PROCESSING]
         )
 
-        # Get all validation results for the period
+        # Get all validation results for the engagement
         all_results = []
         for doc in documents:
             results = self.get_validation_results(doc.id)
@@ -1841,7 +1849,7 @@ class ValidationService:
         warnings = sum(1 for r in all_results if r.status == ValidationStatus.WARNING)
 
         return {
-            "vat_period_id": period_id,
+            "engagement_id": engagement_id,
             "total_documents": total_docs,
             "validated_documents": validated_docs,
             "failed_documents": failed_docs,

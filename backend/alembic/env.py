@@ -9,14 +9,24 @@ from app.config import get_settings
 from app.models.base import Base
 
 # Import all models here so they are registered with Base.metadata
-from app.models.audit import AuditTrailEntry  # noqa: F401
 from app.models.chaser import ChaserRequest, ChaserResponse  # noqa: F401
 from app.models.chat import ChatMessage, ChatSession  # noqa: F401
 from app.models.client import Client  # noqa: F401
 from app.models.document import Document  # noqa: F401
-from app.models.evidence import EvidenceItem  # noqa: F401
 from app.models.validation import ValidationResult  # noqa: F401
-from app.models.vat_period import VATPeriod  # noqa: F401
+
+# New enterprise schema models
+from app.models.client_contact import ClientContact  # noqa: F401
+from app.models.engagement import Engagement  # noqa: F401
+from app.models.document_type import DocumentCategory, DocumentType  # noqa: F401
+from app.models.file_object import FileObject  # noqa: F401
+from app.models.document_version import DocumentVersion  # noqa: F401
+from app.models.counterparty import Counterparty  # noqa: F401
+from app.models.financial_account import FinancialAccount  # noqa: F401
+from app.models.request_set import RequestSet  # noqa: F401
+from app.models.request_item import RequestItem  # noqa: F401
+from app.models.request_template import RequestTemplate, RequestTemplateItem  # noqa: F401
+from app.models.audit_log import AuditLog  # noqa: F401
 
 config = context.config
 

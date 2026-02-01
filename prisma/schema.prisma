@@ -21,64 +21,51 @@ model Client {
   salesChannels   String[]         @default([]) @map("sales_channels")
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  chatSessions    ChatSession[]
-  vatPeriods      VATPeriod[]
-  bankConnections BankConnection[]
-  autoChasers     AutoChaser[]
-  checklistItems  ChecklistItem[]
+  clientType      String?          @map("client_type") @db.VarChar(50)
+  displayName     String?          @map("display_name") @db.VarChar(255)
+  countryCode     String           @default("GB") @map("country_code") @db.VarChar(2)
+  companyNumber   String?          @map("company_number") @db.VarChar(20)
+  utr             String?          @db.VarChar(20)
+  niNumber        String?          @map("ni_number") @db.VarChar(20)
+  vatRegistered   Boolean          @default(false) @map("vat_registered")
+  // Relationships
+  chatSessions      ChatSession[]
+  bankConnections   BankConnection[]
+  autoChasers       AutoChaser[]
+  contacts          ClientContact[]
+  engagements       Engagement[]
+  counterparties    Counterparty[]
+  financialAccounts FinancialAccount[]
+  documents         Document[]
+  auditLogs         AuditLog[]
 
   @@map("clients")
 }
 
-model VATPeriod {
-  id             Int               @id @default(autoincrement())
-  clientId       Int               @map("client_id")
-  periodStart    DateTime          @map("period_start") @db.Date
-  periodEnd      DateTime          @map("period_end") @db.Date
-  dueDate        DateTime?         @map("due_date") @db.Date
-  status         periodstatus
-  isLocked       Boolean           @map("is_locked")
-  reference      String?           @db.VarChar(100)
-  notes          String?           @db.VarChar(2000)
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  auditTrail     AuditTrailEntry[]
-  chaserRequests ChaserRequest[]
-  evidenceItems  EvidenceItem[]
-  client         Client            @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@map("vat_periods")
-}
-
-model EvidenceItem {
-  id            Int              @id @default(autoincrement())
-  vatPeriodId   Int              @map("vat_period_id")
-  category      evidencecategory
-  description   String?          @db.VarChar(500)
-  status        evidencestatus
-  expectedCount Int              @map("expected_count")
-  receivedCount Int              @map("received_count")
-  notes         String?          @db.VarChar(2000)
-  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  documents     Document[]
-  vatPeriod     VATPeriod        @relation(fields: [vatPeriodId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@map("evidence_items")
-}
-
 model Document {
   id                Int                @id @default(autoincrement())
-  evidenceItemId    Int?               @map("evidence_item_id")
+  clientId          Int                @map("client_id")
+  engagementId      Int?               @map("engagement_id")
+  documentTypeId    Int?               @map("document_type_id")
+  counterpartyId    Int?               @map("counterparty_id")
+  accountId         Int?               @map("account_id")
+  // File information
   filename          String             @db.VarChar(500)
   s3Key             String             @unique @map("s3_key") @db.VarChar(1000)
   fileHash          String             @map("file_hash") @db.VarChar(64)
   contentType       String?            @map("content_type") @db.VarChar(100)
   fileSize          Int?               @map("file_size")
+  // Document metadata
+  title             String?            @db.VarChar(255)
+  source            String             @default("upload") @db.VarChar(50)
+  documentDate      DateTime?          @map("document_date") @db.Date
+  periodStart       DateTime?          @map("period_start") @db.Date
+  periodEnd         DateTime?          @map("period_end") @db.Date
+  meta              Json?              @db.Json
+  // Processing status
   status            documentstatus
-  documentType      documenttype?      @map("document_type")
   processingError   String?            @map("processing_error") @db.VarChar(2000)
-  extractedData     Json?              @map("extracted_data") @db.Json
+  // Key extracted fields (denormalized from DocumentVersion)
   invoiceNumber     String?            @map("invoice_number") @db.VarChar(100)
   invoiceDate       DateTime?          @map("invoice_date") @db.Date
   supplierName      String?            @map("supplier_name") @db.VarChar(255)
@@ -93,10 +80,24 @@ model Document {
   description       String?            @db.VarChar(2000)
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  evidenceItem      EvidenceItem?      @relation(fields: [evidenceItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // Relationships
+  // WARNING: Using Restrict instead of Cascade to prevent accidental data loss.
+  // Client deletion will fail if documents exist. Consider soft-delete or manual cleanup.
+  client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  engagement        Engagement?        @relation(fields: [engagementId], references: [id])
+  documentTypeRef   DocumentType?      @relation(fields: [documentTypeId], references: [id])
+  counterparty      Counterparty?      @relation(fields: [counterpartyId], references: [id])
+  account           FinancialAccount?  @relation(fields: [accountId], references: [id])
+  versions          DocumentVersion[]
   validationResults ValidationResult[]
+  requestItems      RequestItem[]      @relation("RequestItemDocuments")
 
   @@index([fileHash], map: "ix_documents_file_hash")
+  @@index([clientId], map: "ix_documents_client_id")
+  @@index([engagementId], map: "ix_documents_engagement_id")
+  @@index([documentTypeId], map: "ix_documents_document_type_id")
+  @@index([counterpartyId], map: "ix_documents_counterparty_id")
+  @@index([accountId], map: "ix_documents_account_id")
   @@map("documents")
 }
 
@@ -118,32 +119,14 @@ model ValidationResult {
   reviewAction  String?          @map("review_action") @db.VarChar(50)
   createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  document      Document         @relation(fields: [documentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  document      Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@map("validation_results")
 }
 
-model AuditTrailEntry {
-  id          Int       @id @default(autoincrement())
-  vatPeriodId Int       @map("vat_period_id")
-  action      String    @db.VarChar(100)
-  description String?   @db.VarChar(2000)
-  performedBy String?   @map("performed_by") @db.VarChar(255)
-  performedAt DateTime  @map("performed_at") @db.Timestamptz(6)
-  entityType  String?   @map("entity_type") @db.VarChar(50)
-  entityId    Int?      @map("entity_id")
-  oldValue    String?   @map("old_value") @db.VarChar(2000)
-  newValue    String?   @map("new_value") @db.VarChar(2000)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  vatPeriod   VATPeriod @relation(fields: [vatPeriodId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@map("audit_trail_entries")
-}
-
 model ChaserRequest {
   id             Int              @id @default(autoincrement())
-  vatPeriodId    Int              @map("vat_period_id")
+  engagementId   Int              @map("engagement_id")
   recipientEmail String           @map("recipient_email") @db.VarChar(255)
   recipientName  String?          @map("recipient_name") @db.VarChar(255)
   requestedItems Json             @map("requested_items") @db.Json
@@ -157,7 +140,7 @@ model ChaserRequest {
   reminderCount  Int              @map("reminder_count")
   createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  vatPeriod      VATPeriod        @relation(fields: [vatPeriodId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  engagement     Engagement       @relation(fields: [engagementId], references: [id], onDelete: Cascade)
   responses      ChaserResponse[]
 
   @@map("chaser_requests")
@@ -172,7 +155,7 @@ model ChaserResponse {
   notes             String?       @db.VarChar(2000)
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  chaserRequest     ChaserRequest @relation(fields: [chaserRequestId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  chaserRequest     ChaserRequest @relation(fields: [chaserRequestId], references: [id], onDelete: Cascade)
 
   @@map("chaser_responses")
 }
@@ -184,7 +167,7 @@ model ChatSession {
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   messages  ChatMessage[]
-  client    Client?       @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client    Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@map("chat_sessions")
 }
@@ -198,7 +181,7 @@ model ChatMessage {
   toolCallId String?     @map("tool_call_id") @db.VarChar(100)
   createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  session    ChatSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session    ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("chat_messages")
 }
@@ -258,25 +241,241 @@ model BankConnection {
   @@map("bank_connections")
 }
 
-model ChecklistItem {
-  id              Int      @id @default(autoincrement())
-  clientId        Int      @map("client_id")
-  itemId          String   @map("item_id") @db.VarChar(100)
-  title           String   @db.VarChar(255)
-  required        Boolean
-  status          String   @db.VarChar(50)
-  acceptance      String   @db.VarChar(50)
-  ctaAction       String   @map("cta_action") @db.VarChar(50)
-  ctaData         String?  @map("cta_data") @db.VarChar(2000)
-  uploadedFileUrl String?  @map("uploaded_file_url") @db.VarChar(500)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+// ============================================================================
+// ENTERPRISE SCHEMA MODELS
+// ============================================================================
+
+model ClientContact {
+  id        Int      @id @default(autoincrement())
+  clientId  Int      @map("client_id")
+  name      String   @db.VarChar(255)
+  email     String   @db.VarChar(255)
+  role      String?  @db.VarChar(100)
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // Relationships
+  uploadedVersions DocumentVersion[] @relation("UploadedBy")
+  assignedItems    RequestItem[]     @relation("AssignedTo")
+  auditLogs        AuditLog[]        @relation("ActorContact")
 
   @@index([clientId])
-  @@map("checklist_items")
+  @@index([email])
+  @@map("client_contacts")
 }
 
+model Engagement {
+  id             Int             @id @default(autoincrement())
+  clientId       Int             @map("client_id")
+  engagementType String          @map("engagement_type") @db.VarChar(50)
+  periodStart    DateTime        @map("period_start") @db.Date
+  periodEnd      DateTime        @map("period_end") @db.Date
+  status         String          @default("draft") @db.VarChar(50)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // Relationships
+  documents      Document[]
+  requestSets    RequestSet[]
+  chaserRequests ChaserRequest[]
+  auditLogs      AuditLog[]
+
+  @@index([clientId])
+  @@index([periodStart, periodEnd])
+  @@map("engagements")
+}
+
+model DocumentCategory {
+  id            Int            @id @default(autoincrement())
+  code          String         @unique @db.VarChar(50)
+  name          String         @db.VarChar(100)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  documentTypes DocumentType[]
+
+  @@map("document_categories")
+}
+
+model DocumentType {
+  id                   Int                   @id @default(autoincrement())
+  categoryId           Int?                  @map("category_id")
+  code                 String                @unique @db.VarChar(50)
+  name                 String                @db.VarChar(100)
+  clientTypeScope      String?               @map("client_type_scope") @db.VarChar(50)
+  requiresCounterparty Boolean               @default(false) @map("requires_counterparty")
+  requiresAccount      Boolean               @default(false) @map("requires_account")
+  requiresEngagement   Boolean               @default(true) @map("requires_engagement")
+  retentionYears       Int                   @default(7) @map("retention_years")
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  category             DocumentCategory?     @relation(fields: [categoryId], references: [id])
+  // Relationships
+  documents            Document[]
+  requestItems         RequestItem[]
+  templateItems        RequestTemplateItem[]
+
+  @@index([categoryId])
+  @@map("document_types")
+}
+
+model Counterparty {
+  id               Int        @id @default(autoincrement())
+  clientId         Int        @map("client_id")
+  counterpartyType String     @map("counterparty_type") @db.VarChar(50)
+  name             String     @db.VarChar(255)
+  email            String?    @db.VarChar(255)
+  externalRef      String?    @map("external_ref") @db.VarChar(100)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client           Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  documents        Document[]
+
+  @@index([clientId])
+  @@index([name])
+  @@map("counterparties")
+}
+
+model FinancialAccount {
+  id           Int        @id @default(autoincrement())
+  clientId     Int        @map("client_id")
+  accountType  String     @map("account_type") @db.VarChar(50)
+  provider     String?    @db.VarChar(100)
+  accountName  String     @map("account_name") @db.VarChar(255)
+  currencyCode String     @default("GBP") @map("currency_code") @db.VarChar(3)
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client       Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  documents    Document[]
+
+  @@index([clientId])
+  @@map("financial_accounts")
+}
+
+model FileObject {
+  id               Int               @id @default(autoincrement())
+  storageProvider  String            @default("s3") @map("storage_provider") @db.VarChar(50)
+  bucket           String            @db.VarChar(255)
+  objectKey        String            @unique @map("object_key") @db.VarChar(1000)
+  byteSize         BigInt            @map("byte_size")
+  mimeType         String?           @map("mime_type") @db.VarChar(100)
+  checksumSha256   String?           @map("checksum_sha256") @db.VarChar(64)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  documentVersions DocumentVersion[]
+
+  @@index([objectKey])
+  @@map("file_objects")
+}
+
+model DocumentVersion {
+  id                  Int            @id @default(autoincrement())
+  documentId          Int            @map("document_id")
+  fileObjectId        Int?           @map("file_object_id")
+  versionNo           Int            @default(1) @map("version_no")
+  uploadedByContactId Int?           @map("uploaded_by_contact_id")
+  uploadedAt          DateTime       @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  extractedData       Json?          @map("extracted_data") @db.Json
+  extractionStatus    String?        @map("extraction_status") @db.VarChar(50)
+  notes               String?        @db.VarChar(2000)
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  document            Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fileObject          FileObject?    @relation(fields: [fileObjectId], references: [id])
+  uploadedBy          ClientContact? @relation("UploadedBy", fields: [uploadedByContactId], references: [id])
+
+  @@index([documentId])
+  @@index([fileObjectId])
+  @@map("document_versions")
+}
+
+model RequestSet {
+  id           Int           @id @default(autoincrement())
+  engagementId Int           @map("engagement_id")
+  name         String        @db.VarChar(255)
+  status       String        @default("draft") @db.VarChar(50)
+  dueDate      DateTime?     @map("due_date") @db.Date
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  engagement   Engagement    @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  requestItems RequestItem[]
+
+  @@index([engagementId])
+  @@map("request_sets")
+}
+
+model RequestItem {
+  id                  Int            @id @default(autoincrement())
+  requestSetId        Int            @map("request_set_id")
+  documentTypeId      Int?           @map("document_type_id")
+  description         String?        @db.VarChar(500)
+  expectedCount       Int            @default(1) @map("expected_count")
+  isRequired          Boolean        @default(true) @map("is_required")
+  status              String         @default("pending") @db.VarChar(50)
+  assignedToContactId Int?           @map("assigned_to_contact_id")
+  dueDate             DateTime?      @map("due_date") @db.Date
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  requestSet          RequestSet     @relation(fields: [requestSetId], references: [id], onDelete: Cascade)
+  documentType        DocumentType?  @relation(fields: [documentTypeId], references: [id])
+  assignedTo          ClientContact? @relation("AssignedTo", fields: [assignedToContactId], references: [id])
+  documents           Document[]     @relation("RequestItemDocuments")
+
+  @@index([requestSetId])
+  @@index([documentTypeId])
+  @@map("request_items")
+}
+
+model RequestTemplate {
+  id             Int                   @id @default(autoincrement())
+  name           String                @db.VarChar(255)
+  clientType     String?               @map("client_type") @db.VarChar(50)
+  engagementType String?               @map("engagement_type") @db.VarChar(50)
+  isActive       Boolean               @default(true) @map("is_active")
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  templateItems  RequestTemplateItem[]
+
+  @@map("request_templates")
+}
+
+model RequestTemplateItem {
+  id             Int             @id @default(autoincrement())
+  templateId     Int             @map("template_id")
+  documentTypeId Int?            @map("document_type_id")
+  description    String?         @db.VarChar(500)
+  expectedCount  Int             @default(1) @map("expected_count")
+  isRequired     Boolean         @default(true) @map("is_required")
+  orderIndex     Int             @default(0) @map("order_index")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  template       RequestTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  documentType   DocumentType?   @relation(fields: [documentTypeId], references: [id])
+
+  @@index([templateId])
+  @@map("request_template_items")
+}
+
+model AuditLog {
+  id             Int            @id @default(autoincrement())
+  clientId       Int?           @map("client_id")
+  engagementId   Int?           @map("engagement_id")
+  entityType     String         @map("entity_type") @db.VarChar(50)
+  entityId       Int            @map("entity_id")
+  action         String         @db.VarChar(100)
+  actorContactId Int?           @map("actor_contact_id")
+  changes        Json?          @db.Json
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  client         Client?        @relation(fields: [clientId], references: [id])
+  engagement     Engagement?    @relation(fields: [engagementId], references: [id])
+  actorContact   ClientContact? @relation("ActorContact", fields: [actorContactId], references: [id])
+
+  @@index([clientId])
+  @@index([engagementId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
 
 model Post {
   id          Int      @id @default(autoincrement())
@@ -337,20 +536,6 @@ enum documentstatus {
   FAILED
 }
 
-enum documenttype {
-  INVOICE
-  CREDIT_NOTE
-  DEBIT_NOTE
-  RECEIPT
-  BANK_STATEMENT
-  CONTRACT
-  IMPORT_DECLARATION
-  EXPORT_DECLARATION
-  VAT_CERTIFICATE
-  PAYROLL
-  OTHER
-}
-
 enum entitytype {
   SOLE_TRADER
   PARTNERSHIP
@@ -361,42 +546,11 @@ enum entitytype {
   OTHER
 }
 
-enum evidencecategory {
-  SALES_INVOICES
-  PURCHASE_INVOICES
-  CREDIT_NOTES
-  DEBIT_NOTES
-  BANK_STATEMENTS
-  RECEIPTS
-  CONTRACTS
-  IMPORT_DOCUMENTS
-  EXPORT_DOCUMENTS
-  VAT_CERTIFICATES
-  OTHER
-}
-
-enum evidencestatus {
-  PENDING
-  PARTIAL
-  COMPLETE
-  VALIDATED
-  EXCEPTION
-}
-
 enum messagerole {
   USER
   ASSISTANT
   SYSTEM
   TOOL
-}
-
-enum periodstatus {
-  DRAFT
-  IN_PROGRESS
-  UNDER_REVIEW
-  READY
-  SUBMITTED
-  LOCKED
 }
 
 enum ruletype {

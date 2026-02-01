@@ -2,14 +2,15 @@
 
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai import get_ai_provider
 from app.models.chaser import ChaserRequest, ChaserResponse, ChaserStatus
+from app.models.request_set import RequestSet, RequestSetStatus
+from app.models.request_item import RequestItem, RequestItemStatus
 from app.schemas.email import EmailPurpose, EmailRequest, EmailTone
 from app.services.email_service import EmailService
-from app.services.evidence_service import EvidenceService
 
 
 class ChaserService:
@@ -20,7 +21,7 @@ class ChaserService:
 
     def create(
         self,
-        vat_period_id: int,
+        engagement_id: int,
         recipient_email: str,
         recipient_name: str | None = None,
         requested_items: list[str] | None = None,
@@ -31,7 +32,7 @@ class ChaserService:
             due_date = date.today() + timedelta(days=14)  # Default 2 weeks
 
         chaser = ChaserRequest(
-            vat_period_id=vat_period_id,
+            engagement_id=engagement_id,
             recipient_email=recipient_email,
             recipient_name=recipient_name,
             requested_items=requested_items or [],
@@ -51,23 +52,23 @@ class ChaserService:
         stmt = select(ChaserRequest).where(ChaserRequest.upload_token == upload_token)
         return self.db.scalars(stmt).first()
 
-    def list_by_period(
-        self, period_id: int, skip: int = 0, limit: int = 100
+    def list_by_engagement(
+        self, engagement_id: int, skip: int = 0, limit: int = 100
     ) -> tuple[list[ChaserRequest], int]:
-        """List all chaser requests for a VAT period."""
+        """List all chaser requests for an engagement."""
         stmt = (
             select(ChaserRequest)
-            .where(ChaserRequest.vat_period_id == period_id)
+            .where(ChaserRequest.engagement_id == engagement_id)
             .offset(skip)
             .limit(limit)
         )
         chasers = list(self.db.scalars(stmt).all())
         total = (
-            self.db.query(ChaserRequest)
-            .filter(ChaserRequest.vat_period_id == period_id)
-            .count()
+            self.db.query(func.count(ChaserRequest.id))
+            .filter(ChaserRequest.engagement_id == engagement_id)
+            .scalar()
         )
-        return chasers, total
+        return chasers, total or 0
 
     async def generate_message(self, chaser_id: int) -> ChaserRequest | None:
         """Generate AI message for a chaser request."""
@@ -83,7 +84,7 @@ class ChaserService:
         )
 
         chaser.message_body = message
-        chaser.subject = f"VAT Evidence Request - {len(chaser.requested_items)} items needed"
+        chaser.subject = f"Document Request - {len(chaser.requested_items)} items needed"
 
         self.db.commit()
         self.db.refresh(chaser)
@@ -152,21 +153,29 @@ class ChaserService:
         self.db.refresh(chaser)
         return chaser
 
-    def auto_chase(self, period_id: int, recipient_email: str) -> ChaserRequest | None:
-        """Automatically create a chaser for all gaps in a VAT period."""
-        evidence_service = EvidenceService(self.db)
-        gap_report = evidence_service.get_gaps(period_id)
+    def auto_chase(self, engagement_id: int, recipient_email: str) -> ChaserRequest | None:
+        """Automatically create a chaser for all pending request items in an engagement."""
+        # Find pending request items
+        stmt = (
+            select(RequestItem)
+            .join(RequestSet)
+            .where(
+                RequestSet.engagement_id == engagement_id,
+                RequestItem.status == RequestItemStatus.PENDING,
+            )
+        )
+        pending_items = list(self.db.scalars(stmt).all())
 
-        if not gap_report.gaps:
+        if not pending_items:
             return None
 
         requested_items = [
-            f"{gap.category.value}: {gap.missing_count} item(s) needed"
-            for gap in gap_report.gaps
+            f"{item.description or 'Document'}: {item.expected_count} item(s) needed"
+            for item in pending_items
         ]
 
         chaser = self.create(
-            vat_period_id=period_id,
+            engagement_id=engagement_id,
             recipient_email=recipient_email,
             requested_items=requested_items,
         )

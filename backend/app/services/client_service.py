@@ -1,12 +1,12 @@
 """Service layer for Client operations."""
 
-from sqlalchemy import select
+from __future__ import annotations
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.client import Client
-from app.models.vat_period import VATPeriod
 from app.schemas.client import ClientCreate, ClientUpdate
-from app.schemas.vat_period import VATPeriodCreate, VATPeriodUpdate
 
 
 class ClientService:
@@ -36,8 +36,8 @@ class ClientService:
         """List all clients with pagination."""
         stmt = select(Client).offset(skip).limit(limit)
         clients = list(self.db.scalars(stmt).all())
-        total = self.db.query(Client).count()
-        return clients, total
+        total = self.db.query(func.count(Client.id)).scalar()
+        return clients, total or 0
 
     def update(self, client_id: int, data: ClientUpdate) -> Client | None:
         """Update a client."""
@@ -51,79 +51,83 @@ class ClientService:
         return client
 
     def delete(self, client_id: int) -> bool:
-        """Delete a client."""
+        """Delete a client.
+        
+        WARNING: This operation is restricted if the client has associated documents.
+        The database will prevent deletion if documents exist (RESTRICT constraint).
+        
+        For production use, consider:
+        1. Creating a database backup before deletion
+        2. Implementing a soft-delete pattern
+        3. Manually removing or archiving documents first
+        
+        Raises:
+            IntegrityError: If client has associated documents or other dependent records.
+        """
+        from sqlalchemy import func, select
+        from sqlalchemy.exc import IntegrityError
+        from app.models.document import Document
+        from app.models.engagement import Engagement
+        
         client = self.get(client_id)
         if not client:
             return False
-        self.db.delete(client)
-        self.db.commit()
-        return True
+        
+        # Check for dependent records before attempting deletion
+        # This provides a clearer error message than database constraint violation
+        doc_count = self.db.scalar(
+            select(func.count(Document.id)).where(Document.client_id == client_id)
+        ) or 0
+        
+        engagement_count = self.db.scalar(
+            select(func.count(Engagement.id)).where(Engagement.client_id == client_id)
+        ) or 0
+        
+        if doc_count > 0:
+            raise ValueError(
+                f"Cannot delete client {client_id}: {doc_count} document(s) exist. "
+                "Please remove or archive documents first, or use a soft-delete pattern."
+            )
+        
+        if engagement_count > 0:
+            raise ValueError(
+                f"Cannot delete client {client_id}: {engagement_count} engagement(s) exist. "
+                "Please remove engagements first."
+            )
+        
+        try:
+            self.db.delete(client)
+            self.db.commit()
+            return True
+        except IntegrityError as e:
+            # Database-level constraint violation (additional safety)
+            self.db.rollback()
+            raise ValueError(
+                f"Cannot delete client {client_id}: database constraint violation. "
+                "This client has dependent records that must be removed first."
+            ) from e
 
-
-class VATPeriodService:
-    """Service for managing VAT periods."""
-
-    def __init__(self, db: Session):
-        self.db = db
-
-    def create(self, data: VATPeriodCreate) -> VATPeriod:
-        """Create a new VAT period."""
-        vat_period = VATPeriod(**data.model_dump())
-        self.db.add(vat_period)
-        self.db.commit()
-        self.db.refresh(vat_period)
-        return vat_period
-
-    def get(self, period_id: int) -> VATPeriod | None:
-        """Get a VAT period by ID."""
-        return self.db.get(VATPeriod, period_id)
-
-    def list_by_client(
-        self, client_id: int, skip: int = 0, limit: int = 100
-    ) -> tuple[list[VATPeriod], int]:
-        """List all VAT periods for a client."""
+    def search(self, query: str, skip: int = 0, limit: int = 100) -> tuple[list[Client], int]:
+        """Search clients by name or VAT number."""
+        search_pattern = f"%{query}%"
         stmt = (
-            select(VATPeriod)
-            .where(VATPeriod.client_id == client_id)
+            select(Client)
+            .where(
+                (Client.name.ilike(search_pattern)) |
+                (Client.vat_number.ilike(search_pattern)) |
+                (Client.display_name.ilike(search_pattern))
+            )
             .offset(skip)
             .limit(limit)
         )
-        periods = list(self.db.scalars(stmt).all())
+        clients = list(self.db.scalars(stmt).all())
         total = (
-            self.db.query(VATPeriod).filter(VATPeriod.client_id == client_id).count()
+            self.db.query(func.count(Client.id))
+            .filter(
+                (Client.name.ilike(search_pattern)) |
+                (Client.vat_number.ilike(search_pattern)) |
+                (Client.display_name.ilike(search_pattern))
+            )
+            .scalar()
         )
-        return periods, total
-
-    def update(self, period_id: int, data: VATPeriodUpdate) -> VATPeriod | None:
-        """Update a VAT period."""
-        period = self.get(period_id)
-        if not period:
-            return None
-        if period.is_locked:
-            raise ValueError("Cannot update a locked VAT period")
-        for key, value in data.model_dump(exclude_unset=True).items():
-            setattr(period, key, value)
-        self.db.commit()
-        self.db.refresh(period)
-        return period
-
-    def delete(self, period_id: int) -> bool:
-        """Delete a VAT period."""
-        period = self.get(period_id)
-        if not period:
-            return False
-        if period.is_locked:
-            raise ValueError("Cannot delete a locked VAT period")
-        self.db.delete(period)
-        self.db.commit()
-        return True
-
-    def lock(self, period_id: int) -> VATPeriod | None:
-        """Lock a VAT period."""
-        period = self.get(period_id)
-        if not period:
-            return None
-        period.is_locked = True
-        self.db.commit()
-        self.db.refresh(period)
-        return period
+        return clients, total or 0

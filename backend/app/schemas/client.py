@@ -61,7 +61,8 @@ class OnboardingCompleteRequest(BaseModel):
     completed_items: int | None = None
     not_applicable_items: int | None = None
     total_items: int | None = None
-    vat_period_id: int | None = None
+    engagement_id: int | None = None
+    vat_period_id: int | None = None  # Deprecated: use engagement_id
 
 
 class OnboardingCompleteResponse(BaseModel):
@@ -70,4 +71,4 @@ class OnboardingCompleteResponse(BaseModel):
     success: bool
     message: str
     client_id: int
-    vat_period_id: int | None = None
+    engagement_id: int | None = None

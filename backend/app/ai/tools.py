@@ -7,13 +7,16 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.client import Client, EntityType
-from app.models.vat_period import VATPeriod, PeriodStatus
-from app.models.bank_connection import BankConnection
-from app.models.checklist_item import ChecklistItem
 from app.models.document import Document, DocumentStatus
-from app.models.evidence import EvidenceItem
 from app.models.validation import ValidationResult, ValidationStatus
 from app.schemas.email import EmailPurpose, EmailTone
+
+# New schema models
+from app.models.engagement import Engagement, EngagementType, EngagementStatus
+from app.models.request_set import RequestSet, RequestSetStatus
+from app.models.request_item import RequestItem, RequestItemStatus
+from app.models.client_contact import ClientContact
+from app.models.financial_account import FinancialAccount
 
 logger = logging.getLogger(__name__)
 
@@ -235,70 +238,110 @@ class ChatTools:
         if not client:
             return {"error": f"Client {client_id} not found"}
 
-        # Get latest VAT period
-        latest_period = (
-            self.db.query(VATPeriod)
-            .filter(VATPeriod.client_id == client_id)
-            .order_by(VATPeriod.period_end.desc())
+        # Get latest Engagement
+        latest_engagement = (
+            self.db.query(Engagement)
+            .filter(Engagement.client_id == client_id)
+            .order_by(Engagement.period_end.desc())
             .first()
         )
 
-        # Get checklist summary
-        checklist_items = list(
-            self.db.query(ChecklistItem)
-            .filter(ChecklistItem.client_id == client_id)
+        # Get RequestItems from engagement
+        request_items_count = 0
+        request_items_complete = 0
+        if latest_engagement:
+            request_sets = list(
+                self.db.query(RequestSet)
+                .filter(RequestSet.engagement_id == latest_engagement.id)
+                .all()
+            )
+            for rs in request_sets:
+                items = list(
+                    self.db.query(RequestItem)
+                    .filter(RequestItem.request_set_id == rs.id)
+                    .all()
+                )
+                request_items_count += len(items)
+                request_items_complete += len([i for i in items if i.status == RequestItemStatus.COMPLETE])
+
+        # Get financial accounts
+        financial_accounts = list(
+            self.db.query(FinancialAccount)
+            .filter(FinancialAccount.client_id == client_id, FinancialAccount.is_active == True)
             .all()
         )
-        required_items = [i for i in checklist_items if i.required]
-        uploaded_items = [i for i in required_items if i.status == "uploaded"]
-
-        # Get bank connections
-        bank_connections = list(
-            self.db.query(BankConnection)
-            .filter(BankConnection.client_id == client_id, BankConnection.is_active == True)
+        
+        # Get client contacts
+        contacts = list(
+            self.db.query(ClientContact)
+            .filter(ClientContact.client_id == client_id)
             .all()
         )
 
-        vat_period_info = None
-        if latest_period:
-            quarter_num = (latest_period.period_start.month - 1) // 3 + 1
-            vat_period_info = {
-                "label": f"Q{quarter_num} {latest_period.period_start.year}",
-                "start": latest_period.period_start.isoformat() if latest_period.period_start else None,
-                "end": latest_period.period_end.isoformat() if latest_period.period_end else None,
-                "due_date": latest_period.due_date.isoformat() if latest_period.due_date else None,
-                "status": latest_period.status.value if latest_period.status else None,
+        # Build engagement info
+        engagement_info = None
+        if latest_engagement:
+            quarter_num = (latest_engagement.period_start.month - 1) // 3 + 1
+            engagement_info = {
+                "id": latest_engagement.id,
+                "type": latest_engagement.engagement_type.value if latest_engagement.engagement_type else None,
+                "label": f"Q{quarter_num} {latest_engagement.period_start.year}",
+                "start": latest_engagement.period_start.isoformat() if latest_engagement.period_start else None,
+                "end": latest_engagement.period_end.isoformat() if latest_engagement.period_end else None,
+                "due_date": latest_engagement.due_date.isoformat() if latest_engagement.due_date else None,
+                "status": latest_engagement.status.value if latest_engagement.status else None,
             }
+        
+        # Calculate document stats
+        documents_info = {
+            "total_required": request_items_count,
+            "uploaded": request_items_complete,
+            "missing": request_items_count - request_items_complete,
+            "completion_percentage": round(request_items_complete / request_items_count * 100) if request_items_count else 100,
+        }
 
         return {
             "client": {
                 "id": client.id,
                 "name": client.name,
+                "display_name": client.display_name,
                 "email": client.contact_email,
                 "contact_name": client.contact_name,
                 "entity_type": client.entity_type.value if client.entity_type else None,
+                "client_type": client.client_type,
                 "vat_scheme": client.vat_scheme,
                 "vat_number": client.vat_number,
+                "vat_registered": client.vat_registered,
+                "company_number": client.company_number,
+                "utr": client.utr,
                 "address": client.address,
                 "notes": client.notes,
                 "created_at": client.created_at.isoformat() if client.created_at else None,
             },
-            "vat_period": vat_period_info,
-            "documents": {
-                "total_required": len(required_items),
-                "uploaded": len(uploaded_items),
-                "missing": len(required_items) - len(uploaded_items),
-                "completion_percentage": round(len(uploaded_items) / len(required_items) * 100) if required_items else 100,
-            },
-            "bank_connections": [
+            "contacts": [
                 {
-                    "institution": bc.institution_name,
-                    "account_name": bc.account_name,
-                    "account_type": bc.account_type,
+                    "id": c.id,
+                    "name": c.name,
+                    "email": c.email,
+                    "role": c.role,
+                    "is_primary": c.is_primary,
                 }
-                for bc in bank_connections
+                for c in contacts
             ],
-            "has_bank_connected": len(bank_connections) > 0,
+            "vat_period": engagement_info,  # Use engagement as vat_period for backwards compat
+            "engagement": engagement_info,
+            "documents": documents_info,
+            "financial_accounts": [
+                {
+                    "id": fa.id,
+                    "provider": fa.provider,
+                    "account_name": fa.account_name,
+                    "account_type": fa.account_type.value if fa.account_type else None,
+                    "currency": fa.currency_code,
+                }
+                for fa in financial_accounts
+            ],
+            "has_bank_connected": len(financial_accounts) > 0,
         }
 
     def _tool_search_clients(self, query: str) -> dict[str, Any]:
@@ -332,49 +375,73 @@ class ChatTools:
         }
 
     def _tool_get_document_checklist(self, client_id: int) -> dict[str, Any]:
-        """Get document checklist for a client."""
+        """Get document checklist for a client using RequestItems from engagements."""
         client = self.db.get(Client, client_id)
         if not client:
             return {"error": f"Client {client_id} not found"}
 
-        checklist_items = list(
-            self.db.query(ChecklistItem)
-            .filter(ChecklistItem.client_id == client_id)
+        # Get latest Engagement
+        latest_engagement = (
+            self.db.query(Engagement)
+            .filter(Engagement.client_id == client_id)
+            .order_by(Engagement.period_end.desc())
+            .first()
+        )
+        
+        request_items_list = []
+        if latest_engagement:
+            request_sets = list(
+                self.db.query(RequestSet)
+                .filter(RequestSet.engagement_id == latest_engagement.id)
+                .all()
+            )
+            for rs in request_sets:
+                items = list(
+                    self.db.query(RequestItem)
+                    .filter(RequestItem.request_set_id == rs.id)
+                    .all()
+                )
+                for item in items:
+                    status_icon = "✅" if item.status == RequestItemStatus.COMPLETE else (
+                        "⏳" if item.status == RequestItemStatus.PARTIAL else "❌"
+                    )
+                    request_items_list.append({
+                        "id": item.id,
+                        "title": item.document_type.name if item.document_type else item.description,
+                        "description": item.description,
+                        "status": item.status.value if item.status else "pending",
+                        "status_icon": status_icon,
+                        "required": item.is_required,
+                        "expected_count": item.expected_count,
+                        "documents_count": len(item.documents) if item.documents else 0,
+                        "request_set": rs.name,
+                    })
+        
+        financial_accounts = list(
+            self.db.query(FinancialAccount)
+            .filter(FinancialAccount.client_id == client_id, FinancialAccount.is_active == True)
             .all()
         )
 
-        bank_connections = list(
-            self.db.query(BankConnection)
-            .filter(BankConnection.client_id == client_id, BankConnection.is_active == True)
-            .all()
-        )
-
-        items = []
-        for item in checklist_items:
-            status_icon = "✅" if item.status == "uploaded" else ("⏳" if item.status == "unknown" else "❌")
-            items.append({
-                "id": item.id,
-                "title": item.title,
-                "status": item.status,
-                "status_icon": status_icon,
-                "required": item.required,
-                "has_file": item.uploaded_file_url is not None,
-            })
-
-        required = [i for i in items if i["required"]]
-        uploaded = [i for i in required if i["status"] == "uploaded"]
+        required = [i for i in request_items_list if i.get("required", True)]
+        uploaded = [i for i in required if i["status"] in ("uploaded", "complete")]
 
         return {
             "client_name": client.name,
-            "checklist": items,
+            "checklist": request_items_list,
             "summary": {
-                "total_items": len(items),
+                "total_items": len(request_items_list),
                 "required_items": len(required),
                 "uploaded": len(uploaded),
                 "missing": len(required) - len(uploaded),
                 "completion_percentage": round(len(uploaded) / len(required) * 100) if required else 100,
             },
-            "has_bank_connected": len(bank_connections) > 0,
+            "has_bank_connected": len(financial_accounts) > 0,
+            "engagement": {
+                "id": latest_engagement.id,
+                "type": latest_engagement.engagement_type.value,
+                "status": latest_engagement.status.value,
+            } if latest_engagement else None,
         }
 
     def _tool_get_clients_needing_attention(self) -> dict[str, Any]:
@@ -383,51 +450,45 @@ class ChatTools:
 
         needs_attention = []
         for client in clients:
-            checklist_items = list(
-                self.db.query(ChecklistItem)
-                .filter(
-                    ChecklistItem.client_id == client.id,
-                    ChecklistItem.required == True,
-                    ChecklistItem.status != "uploaded"
-                )
-                .all()
-            )
-
-            required_items = list(
-                self.db.query(ChecklistItem)
-                .filter(
-                    ChecklistItem.client_id == client.id,
-                    ChecklistItem.required == True,
-                )
-                .all()
-            )
-            uploaded_items = [i for i in required_items if i.status == "uploaded"]
-
-            latest_period = (
-                self.db.query(VATPeriod)
-                .filter(VATPeriod.client_id == client.id)
-                .order_by(VATPeriod.period_end.desc())
+            # Get latest engagement
+            latest_engagement = (
+                self.db.query(Engagement)
+                .filter(Engagement.client_id == client.id)
+                .order_by(Engagement.period_end.desc())
                 .first()
             )
 
-            documents_required = len(required_items)
-            documents_uploaded = len(uploaded_items)
-            if documents_required == 0 and latest_period:
-                evidence_items = list(
-                    self.db.query(EvidenceItem)
-                    .filter(EvidenceItem.vat_period_id == latest_period.id)
+            # Get request items from engagement
+            documents_required = 0
+            documents_uploaded = 0
+            missing_items = []
+            
+            if latest_engagement:
+                request_sets = list(
+                    self.db.query(RequestSet)
+                    .filter(RequestSet.engagement_id == latest_engagement.id)
                     .all()
                 )
-                documents_required = sum(item.expected_count for item in evidence_items)
-                documents_uploaded = sum(item.received_count for item in evidence_items)
+                for rs in request_sets:
+                    items = list(
+                        self.db.query(RequestItem)
+                        .filter(RequestItem.request_set_id == rs.id, RequestItem.is_required == True)
+                        .all()
+                    )
+                    documents_required += len(items)
+                    for item in items:
+                        if item.status == RequestItemStatus.COMPLETE:
+                            documents_uploaded += 1
+                        else:
+                            missing_items.append(item.description or (item.document_type.name if item.document_type else "Unknown"))
 
             validation_issue_count = 0
             pending_review_count = 0
-            failed_document_count = 0
             has_failed_validations = False
             has_pending_reviews = False
 
-            if latest_period:
+            if latest_engagement:
+                # Get validation issues for documents in this engagement
                 validation_rows = list(
                     self.db.query(
                         Document.id,
@@ -435,9 +496,8 @@ class ChatTools:
                         ValidationResult.review_action,
                     )
                     .join(ValidationResult, ValidationResult.document_id == Document.id)
-                    .join(EvidenceItem, Document.evidence_item_id == EvidenceItem.id)
                     .filter(
-                        EvidenceItem.vat_period_id == latest_period.id,
+                        Document.engagement_id == latest_engagement.id,
                         ValidationResult.status.in_([
                             ValidationStatus.FAILED,
                             ValidationStatus.WARNING,
@@ -459,16 +519,14 @@ class ChatTools:
                     doc_id
                     for (doc_id,) in (
                         self.db.query(Document.id)
-                        .join(EvidenceItem, Document.evidence_item_id == EvidenceItem.id)
                         .filter(
-                            EvidenceItem.vat_period_id == latest_period.id,
+                            Document.engagement_id == latest_engagement.id,
                             Document.status == DocumentStatus.FAILED,
                         )
                         .all()
                     )
                 }
 
-                failed_document_count = len(failed_doc_ids)
                 validation_issue_count = len(validation_doc_ids | failed_doc_ids)
                 pending_review_count = len(pending_review_doc_ids)
 
@@ -477,21 +535,22 @@ class ChatTools:
 
             has_pending_reviews = pending_review_count > 0
 
+            # Check for financial accounts
             bank_connected = (
-                self.db.query(BankConnection)
-                .filter(BankConnection.client_id == client.id, BankConnection.is_active == True)
+                self.db.query(FinancialAccount)
+                .filter(FinancialAccount.client_id == client.id, FinancialAccount.is_active == True)
                 .count()
                 > 0
             )
 
             attention_reasons = []
-            if checklist_items:
+            if missing_items:
                 attention_reasons.append("missing_documents")
             if validation_issue_count > 0:
                 attention_reasons.append("validation_issues")
             if has_pending_reviews:
                 attention_reasons.append("pending_review")
-            if latest_period and latest_period.status == PeriodStatus.UNDER_REVIEW:
+            if latest_engagement and latest_engagement.status == EngagementStatus.UNDER_REVIEW:
                 attention_reasons.append("under_review")
 
             if attention_reasons:
@@ -499,12 +558,12 @@ class ChatTools:
                     "id": client.id,
                     "name": client.name,
                     "email": client.contact_email,
-                    "missing_documents": len(checklist_items),
-                    "missing_items": [item.title for item in checklist_items[:3]],
+                    "missing_documents": len(missing_items),
+                    "missing_items": missing_items[:3],
                     "documents_required": documents_required,
                     "documents_uploaded": documents_uploaded,
                     "has_bank_connection": bank_connected,
-                    "vat_period_status": latest_period.status.value if latest_period else None,
+                    "engagement_status": latest_engagement.status.value if latest_engagement else None,
                     "validation_issue_count": validation_issue_count,
                     "pending_review_count": pending_review_count,
                     "has_failed_validations": has_failed_validations,
@@ -585,7 +644,7 @@ class ChatTools:
         self.db.add(client)
         self.db.flush()  # Get the client ID
 
-        # Create default VAT period (current quarter)
+        # Create default engagement (current quarter)
         now = datetime.now()
         quarter_month = ((now.month - 1) // 3) * 3 + 1
         period_start = datetime(now.year, quarter_month, 1)
@@ -600,41 +659,49 @@ class ChatTools:
         else:
             period_end = datetime(now.year, 12, 31)
 
-        vat_period = VATPeriod(
+        engagement = Engagement(
             client_id=client.id,
+            engagement_type=EngagementType.VAT_RETURN,
             period_start=period_start.date(),
             period_end=period_end.date(),
-            status=PeriodStatus.DRAFT,
-            is_locked=False,
+            status=EngagementStatus.DRAFT,
         )
-        self.db.add(vat_period)
+        self.db.add(engagement)
+        self.db.flush()
 
-        # Create default checklist items
-        default_checklist = [
-            {"item_id": "bank_statements", "title": "Bank Statements", "required": True},
-            {"item_id": "sales_invoices", "title": "Sales Invoices", "required": True},
-            {"item_id": "purchase_invoices", "title": "Purchase Invoices", "required": True},
-            {"item_id": "expense_receipts", "title": "Expense Receipts", "required": True},
-            {"item_id": "payroll_records", "title": "Payroll Records", "required": False},
+        # Create default request set with items
+        request_set = RequestSet(
+            engagement_id=engagement.id,
+            name="Document Collection",
+            status=RequestSetStatus.OPEN,
+        )
+        self.db.add(request_set)
+        self.db.flush()
+
+        # Create default request items
+        default_items = [
+            {"description": "Bank Statements", "required": True},
+            {"description": "Sales Invoices", "required": True},
+            {"description": "Purchase Invoices", "required": True},
+            {"description": "Expense Receipts", "required": True},
+            {"description": "Payroll Records", "required": False},
         ]
 
-        for item in default_checklist:
-            checklist_item = ChecklistItem(
-                client_id=client.id,
-                item_id=item["item_id"],
-                title=item["title"],
-                required=item["required"],
-                status="missing",
-                acceptance="required" if item["required"] else "optional",
-                cta_action="request_upload",
+        for item in default_items:
+            request_item = RequestItem(
+                request_set_id=request_set.id,
+                description=item["description"],
+                is_required=item["required"],
+                expected_count=1,
+                status=RequestItemStatus.PENDING,
             )
-            self.db.add(checklist_item)
+            self.db.add(request_item)
 
         self.db.commit()
         self.db.refresh(client)
 
         quarter_num = (period_start.month - 1) // 3 + 1
-        vat_period_label = f"Q{quarter_num} {period_start.year}"
+        engagement_label = f"Q{quarter_num} {period_start.year}"
 
         onboarding_link = f"/onboard/{client.id}"
 
@@ -660,33 +727,45 @@ class ChatTools:
                 "email": client.contact_email,
                 "entity_type": client.entity_type.value,
                 "vat_scheme": client.vat_scheme,
-                "vat_period": vat_period_label,
+                "engagement": engagement_label,
             },
             "onboarding_link": onboarding_link,
         }
 
     def _tool_update_checklist_item(self, item_id: int, status: str) -> dict[str, Any]:
-        """Update a checklist item status."""
-        item = self.db.get(ChecklistItem, item_id)
-        if not item:
-            return {"error": f"Checklist item {item_id} not found"}
-
-        valid_statuses = ["missing", "uploaded", "unknown"]
-        if status not in valid_statuses:
-            return {"error": f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"}
-
-        item.status = status
-        self.db.commit()
-
-        return {
-            "success": True,
-            "message": f"Checklist item '{item.title}' updated to '{status}'",
-            "item": {
-                "id": item.id,
-                "title": item.title,
-                "status": item.status,
-            },
-        }
+        """Update a request item status."""
+        request_item = self.db.get(RequestItem, item_id)
+        if request_item:
+            # Map status strings to RequestItemStatus enum
+            status_mapping = {
+                "missing": RequestItemStatus.PENDING,
+                "uploaded": RequestItemStatus.COMPLETE,
+                "unknown": RequestItemStatus.PENDING,
+                "pending": RequestItemStatus.PENDING,
+                "partial": RequestItemStatus.PARTIAL,
+                "complete": RequestItemStatus.COMPLETE,
+                "waived": RequestItemStatus.WAIVED,
+            }
+            
+            new_status = status_mapping.get(status.lower())
+            if not new_status:
+                valid_statuses = list(status_mapping.keys())
+                return {"error": f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"}
+            
+            request_item.status = new_status
+            self.db.commit()
+            
+            return {
+                "success": True,
+                "message": f"Request item updated to '{new_status.value}'",
+                "item": {
+                    "id": request_item.id,
+                    "description": request_item.description,
+                    "status": request_item.status.value,
+                },
+            }
+        
+        return {"error": f"Request item {item_id} not found"}
 
     async def _tool_send_email(
         self,

@@ -11,8 +11,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.evidence import EvidenceItem
     from app.models.validation import ValidationResult
+    from app.models.client import Client
+    from app.models.engagement import Engagement
+    from app.models.document_type import DocumentType
+    from app.models.counterparty import Counterparty
+    from app.models.financial_account import FinancialAccount
+    from app.models.document_version import DocumentVersion
+    from app.models.request_item import RequestItem
 
 
 class DocumentStatus(str, enum.Enum):
@@ -25,30 +31,28 @@ class DocumentStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class DocumentType(str, enum.Enum):
-    """Type of document."""
-
-    INVOICE = "invoice"
-    CREDIT_NOTE = "credit_note"
-    DEBIT_NOTE = "debit_note"
-    RECEIPT = "receipt"
-    BANK_STATEMENT = "bank_statement"
-    PAYROLL = "payroll"
-    CONTRACT = "contract"
-    IMPORT_DECLARATION = "import_declaration"
-    EXPORT_DECLARATION = "export_declaration"
-    VAT_CERTIFICATE = "vat_certificate"
-    OTHER = "other"
-
-
 class Document(Base, TimestampMixin):
     """Document entity for uploaded files."""
 
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    evidence_item_id: Mapped[int | None] = mapped_column(
-        ForeignKey("evidence_items.id")
+
+    # Foreign keys
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id"), nullable=False, index=True
+    )
+    engagement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("engagements.id"), index=True
+    )
+    document_type_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_types.id"), index=True
+    )
+    counterparty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("counterparties.id"), index=True
+    )
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_accounts.id"), index=True
     )
 
     # File information
@@ -58,17 +62,21 @@ class Document(Base, TimestampMixin):
     content_type: Mapped[str | None] = mapped_column(String(100))
     file_size: Mapped[int | None] = mapped_column()
 
+    # Document metadata
+    title: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(String(50), default="upload")
+    document_date: Mapped[date | None] = mapped_column(Date)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
     # Processing status
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus), default=DocumentStatus.PENDING
     )
-    document_type: Mapped[DocumentType | None] = mapped_column(Enum(DocumentType))
     processing_error: Mapped[str | None] = mapped_column(String(2000))
 
-    # Extracted fields (from AI processing)
-    extracted_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-
-    # Key extracted fields for quick access
+    # Key extracted fields for quick access (denormalized from DocumentVersion)
     invoice_number: Mapped[str | None] = mapped_column(String(100))
     invoice_date: Mapped[date | None] = mapped_column(Date)
     supplier_name: Mapped[str | None] = mapped_column(String(255))
@@ -83,12 +91,45 @@ class Document(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(String(2000))
 
     # Relationships
-    evidence_item: Mapped["EvidenceItem | None"] = relationship(
-        "EvidenceItem", back_populates="documents"
+    client: Mapped["Client"] = relationship(
+        "Client", back_populates="documents"
+    )
+    engagement: Mapped["Engagement | None"] = relationship(
+        "Engagement", back_populates="documents"
+    )
+    document_type: Mapped["DocumentType | None"] = relationship(
+        "DocumentType", back_populates="documents"
+    )
+    counterparty: Mapped["Counterparty | None"] = relationship(
+        "Counterparty", back_populates="documents"
+    )
+    account: Mapped["FinancialAccount | None"] = relationship(
+        "FinancialAccount", back_populates="documents"
+    )
+    versions: Mapped[list["DocumentVersion"]] = relationship(
+        "DocumentVersion", back_populates="document", cascade="all, delete-orphan"
     )
     validation_results: Mapped[list["ValidationResult"]] = relationship(
         "ValidationResult", back_populates="document", cascade="all, delete-orphan"
     )
+    request_items: Mapped[list["RequestItem"]] = relationship(
+        "RequestItem",
+        secondary="request_item_documents",
+        back_populates="documents"
+    )
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename='{self.filename}', status={self.status})>"
+
+    def get_latest_version(self) -> "DocumentVersion | None":
+        """Get the latest version of this document."""
+        if not self.versions:
+            return None
+        return max(self.versions, key=lambda v: v.version_no)
+
+    def get_extracted_data(self) -> dict[str, Any] | None:
+        """Get extracted data from the latest version."""
+        latest = self.get_latest_version()
+        if latest and latest.extracted_data:
+            return latest.extracted_data
+        return None
