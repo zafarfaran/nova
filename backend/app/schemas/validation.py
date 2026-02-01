@@ -1,6 +1,6 @@
 """Backward compatibility: Re-export from new location."""
 
-from app.schemas.validation import (
+from app.schemas.validation.validation import (
     ValidationResultBase,
     ValidationResultResponse,
     ValidationResultList,

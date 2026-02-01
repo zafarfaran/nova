@@ -1,6 +1,6 @@
 """Backward compatibility: Re-export from new location."""
 
-from app.schemas.audit import (
+from app.schemas.audit.audit import (
     AuditLogResponse,
     AuditLogList,
 )

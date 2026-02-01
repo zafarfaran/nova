@@ -1,6 +1,6 @@
 """Backward compatibility: Re-export from new location."""
 
-from app.schemas.email import (
+from app.schemas.email.email import (
     EmailPurpose,
     EmailTone,
     EmailRequest,

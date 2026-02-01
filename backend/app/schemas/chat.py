@@ -1,6 +1,6 @@
 """Backward compatibility: Re-export from new location."""
 
-from app.schemas.chat import (
+from app.schemas.chat.chat import (
     ChatSessionCreate,
     ChatSessionResponse,
     ChatMessageResponse,

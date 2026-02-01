@@ -5,9 +5,9 @@ from app.models.shared import Base, TimestampMixin
 # Core models
 from app.models.clients import Client, EntityType, ClientType
 from app.models.documents import Document, DocumentStatus
-from app.models.validation import ValidationResult, RuleType, ValidationStatus
-from app.models.chaser import ChaserRequest, ChaserResponse, ChaserStatus
-from app.models.chat import ChatSession, ChatMessage, MessageRole
+from app.models.validation.validation import ValidationResult, RuleType, ValidationStatus
+from app.models.chaser.chaser import ChaserRequest, ChaserResponse, ChaserStatus
+from app.models.chat.chat import ChatSession, ChatMessage, MessageRole
 
 # Enterprise schema models
 from app.models.clients import ClientContact
@@ -20,7 +20,7 @@ from app.models.clients import FinancialAccount, AccountType
 from app.models.requests import RequestSet, RequestSetStatus
 from app.models.requests import RequestItem, RequestItemStatus, request_item_documents
 from app.models.requests import RequestTemplate, RequestTemplateItem
-from app.models.audit import AuditLog
+from app.models.audit.log import AuditLog
 
 __all__ = [
     # Base
