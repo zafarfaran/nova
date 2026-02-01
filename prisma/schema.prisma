@@ -81,7 +81,9 @@ model Document {
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   // Relationships
-  client            Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // WARNING: Using Restrict instead of Cascade to prevent accidental data loss.
+  // Client deletion will fail if documents exist. Consider soft-delete or manual cleanup.
+  client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
   engagement        Engagement?        @relation(fields: [engagementId], references: [id])
   documentTypeRef   DocumentType?      @relation(fields: [documentTypeId], references: [id])
   counterparty      Counterparty?      @relation(fields: [counterpartyId], references: [id])
