@@ -7,12 +7,12 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.client import Client, EntityType
-from app.models.document import Document, DocumentStatus
+from app.models.documents import Document, DocumentStatus
 from app.models.validation import ValidationResult, ValidationStatus
 from app.schemas.email import EmailPurpose, EmailTone
 
 # New schema models
-from app.models.engagement import Engagement, EngagementType, EngagementStatus
+from app.models.engagements import Engagement, EngagementType, EngagementStatus
 from app.models.request_set import RequestSet, RequestSetStatus
 from app.models.request_item import RequestItem, RequestItemStatus
 from app.models.client_contact import ClientContact

@@ -47,8 +47,8 @@ def setup_logging() -> None:
         logging.getLogger(logger_name).setLevel(app_log_level)
 
     # Always show extraction pipeline details
-    logging.getLogger("app.tasks.document_tasks").setLevel(logging.INFO)
-    logging.getLogger("app.services.pdf_extraction_service").setLevel(logging.INFO)
+    logging.getLogger("app.tasks.documents.document_tasks").setLevel(logging.INFO)
+    logging.getLogger("app.services.documents.extraction").setLevel(logging.INFO)
     logging.getLogger("app.ai.openai_provider").setLevel(logging.INFO)
     logging.getLogger("app.ai.anthropic_provider").setLevel(logging.INFO)
 
