@@ -32,36 +32,60 @@ def upgrade() -> None:
                     existing_type=sa.Integer(),
                     nullable=False)
     
-    # Remove legacy columns from documents
-    op.drop_constraint('documents_evidence_item_id_fkey', 'documents', type_='foreignkey')
-    op.drop_column('documents', 'evidence_item_id')
-    op.drop_column('documents', 'document_type')
-    op.drop_column('documents', 'extracted_data')
+    # Remove legacy columns from documents (if they exist)
+    # These may not exist if migrating from fresh schema
+    try:
+        op.drop_constraint('documents_evidence_item_id_fkey', 'documents', type_='foreignkey')
+    except Exception:
+        pass  # Constraint may not exist
+    
+    # Use raw SQL to drop columns only if they exist
+    op.execute("ALTER TABLE documents DROP COLUMN IF EXISTS evidence_item_id")
+    op.execute("ALTER TABLE documents DROP COLUMN IF EXISTS document_type")
+    op.execute("ALTER TABLE documents DROP COLUMN IF EXISTS extracted_data")
     
     # Update chaser_requests: add engagement_id, remove vat_period_id
-    op.add_column('chaser_requests', sa.Column('engagement_id', sa.Integer(), nullable=True))
-    op.create_foreign_key('fk_chaser_requests_engagement_id', 'chaser_requests', 'engagements', 
-                          ['engagement_id'], ['id'], ondelete='CASCADE')
-    op.create_index('ix_chaser_requests_engagement_id', 'chaser_requests', ['engagement_id'])
+    # First check if engagement_id already exists
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE chaser_requests ADD COLUMN engagement_id INTEGER;
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+    """)
     
-    # Drop vat_period_id from chaser_requests (after migrating data)
-    op.drop_constraint('chaser_requests_vat_period_id_fkey', 'chaser_requests', type_='foreignkey')
-    op.drop_column('chaser_requests', 'vat_period_id')
+    # Create foreign key if not exists
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE chaser_requests 
+            ADD CONSTRAINT fk_chaser_requests_engagement_id 
+            FOREIGN KEY (engagement_id) REFERENCES engagements(id) ON DELETE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """)
     
-    # Make engagement_id required
-    op.alter_column('chaser_requests', 'engagement_id',
-                    existing_type=sa.Integer(),
-                    nullable=False)
+    # Create index if not exists
+    op.execute("CREATE INDEX IF NOT EXISTS ix_chaser_requests_engagement_id ON chaser_requests(engagement_id)")
     
-    # Drop deprecated tables in correct order (respecting foreign keys)
-    op.drop_table('audit_trail_entries')
-    op.drop_table('checklist_items')
+    # Drop vat_period_id from chaser_requests (if exists)
+    try:
+        op.drop_constraint('chaser_requests_vat_period_id_fkey', 'chaser_requests', type_='foreignkey')
+    except Exception:
+        pass  # Constraint may not exist
+    op.execute("ALTER TABLE chaser_requests DROP COLUMN IF EXISTS vat_period_id")
     
-    # Drop documents that reference evidence_items first (cascade should handle this)
-    op.drop_table('evidence_items')
+    # Make engagement_id required (if possible)
+    op.execute("""
+        DO $$ BEGIN
+            ALTER TABLE chaser_requests ALTER COLUMN engagement_id SET NOT NULL;
+        EXCEPTION WHEN others THEN NULL;
+        END $$;
+    """)
     
-    # Finally drop vat_periods
-    op.drop_table('vat_periods')
+    # Drop deprecated tables (IF EXISTS)
+    op.execute('DROP TABLE IF EXISTS audit_trail_entries CASCADE')
+    op.execute('DROP TABLE IF EXISTS checklist_items CASCADE')
+    op.execute('DROP TABLE IF EXISTS evidence_items CASCADE')
+    op.execute('DROP TABLE IF EXISTS vat_periods CASCADE')
     
     # Drop deprecated enums
     op.execute('DROP TYPE IF EXISTS periodstatus')

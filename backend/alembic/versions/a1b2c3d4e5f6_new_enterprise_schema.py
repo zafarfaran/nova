@@ -36,48 +36,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create enums for new tables
-    engagement_type = postgresql.ENUM(
-        'vat_return', 'annual_accounts', 'tax_return', 'audit', 'bookkeeping', 'other',
-        name='engagementtype'
-    )
-    engagement_type.create(op.get_bind(), checkfirst=True)
+    # Create enums for new tables using raw SQL (safer with checkfirst logic)
+    op.execute("DO $$ BEGIN CREATE TYPE engagementtype AS ENUM ('vat_return', 'annual_accounts', 'tax_return', 'audit', 'bookkeeping', 'other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE engagementstatus AS ENUM ('draft', 'in_progress', 'under_review', 'ready', 'submitted', 'locked'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE counterpartytype AS ENUM ('supplier', 'customer', 'both'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE accounttype AS ENUM ('bank_current', 'bank_savings', 'credit_card', 'payment_processor', 'merchant', 'other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE requestsetstatus AS ENUM ('draft', 'sent', 'partial', 'complete', 'expired'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE requestitemstatus AS ENUM ('pending', 'partial', 'complete', 'waived'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
+    op.execute("DO $$ BEGIN CREATE TYPE extractionstatus AS ENUM ('pending', 'processing', 'extracted', 'failed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
     
-    engagement_status = postgresql.ENUM(
-        'draft', 'in_progress', 'under_review', 'ready', 'submitted', 'locked',
-        name='engagementstatus'
-    )
-    engagement_status.create(op.get_bind(), checkfirst=True)
-    
-    counterparty_type = postgresql.ENUM(
-        'supplier', 'customer', 'both',
-        name='counterpartytype'
-    )
-    counterparty_type.create(op.get_bind(), checkfirst=True)
-    
-    account_type = postgresql.ENUM(
-        'bank_current', 'bank_savings', 'credit_card', 'payment_processor', 'merchant', 'other',
-        name='accounttype'
-    )
-    account_type.create(op.get_bind(), checkfirst=True)
-    
-    request_set_status = postgresql.ENUM(
-        'draft', 'sent', 'partial', 'complete', 'expired',
-        name='requestsetstatus'
-    )
-    request_set_status.create(op.get_bind(), checkfirst=True)
-    
-    request_item_status = postgresql.ENUM(
-        'pending', 'partial', 'complete', 'waived',
-        name='requestitemstatus'
-    )
-    request_item_status.create(op.get_bind(), checkfirst=True)
-    
-    extraction_status = postgresql.ENUM(
-        'pending', 'processing', 'extracted', 'failed',
-        name='extractionstatus'
-    )
-    extraction_status.create(op.get_bind(), checkfirst=True)
+    # Define enum types for column references (create_type=False prevents SQLAlchemy from creating them again)
+    engagement_type = postgresql.ENUM('vat_return', 'annual_accounts', 'tax_return', 'audit', 'bookkeeping', 'other', name='engagementtype', create_type=False)
+    engagement_status = postgresql.ENUM('draft', 'in_progress', 'under_review', 'ready', 'submitted', 'locked', name='engagementstatus', create_type=False)
+    counterparty_type = postgresql.ENUM('supplier', 'customer', 'both', name='counterpartytype', create_type=False)
+    account_type = postgresql.ENUM('bank_current', 'bank_savings', 'credit_card', 'payment_processor', 'merchant', 'other', name='accounttype', create_type=False)
+    request_set_status = postgresql.ENUM('draft', 'sent', 'partial', 'complete', 'expired', name='requestsetstatus', create_type=False)
+    request_item_status = postgresql.ENUM('pending', 'partial', 'complete', 'waived', name='requestitemstatus', create_type=False)
+    extraction_status = postgresql.ENUM('pending', 'processing', 'extracted', 'failed', name='extractionstatus', create_type=False)
     
     # Add new columns to clients table
     op.add_column('clients', sa.Column('client_type', sa.String(50), nullable=True))
@@ -103,14 +78,14 @@ def upgrade() -> None:
     )
     op.create_index('ix_client_contacts_client_id', 'client_contacts', ['client_id'])
     
-    # Create engagements table
+    # Create engagements table - use the enum variables directly
     op.create_table('engagements',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('client_id', sa.Integer(), nullable=False),
-        sa.Column('engagement_type', sa.Enum('vat_return', 'annual_accounts', 'tax_return', 'audit', 'bookkeeping', 'other', name='engagementtype'), nullable=False),
+        sa.Column('engagement_type', engagement_type, nullable=False),
         sa.Column('period_start', sa.Date(), nullable=False),
         sa.Column('period_end', sa.Date(), nullable=False),
-        sa.Column('status', sa.Enum('draft', 'in_progress', 'under_review', 'ready', 'submitted', 'locked', name='engagementstatus'), server_default='draft', nullable=False),
+        sa.Column('status', engagement_status, server_default='draft', nullable=False),
         sa.Column('reference', sa.String(100), nullable=True),
         sa.Column('due_date', sa.Date(), nullable=True),
         sa.Column('notes', sa.String(2000), nullable=True),
@@ -157,7 +132,7 @@ def upgrade() -> None:
     op.create_table('counterparties',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('client_id', sa.Integer(), nullable=False),
-        sa.Column('counterparty_type', sa.Enum('supplier', 'customer', 'both', name='counterpartytype'), nullable=False),
+        sa.Column('counterparty_type', counterparty_type, nullable=False),
         sa.Column('name', sa.String(255), nullable=False),
         sa.Column('email', sa.String(255), nullable=True),
         sa.Column('vat_number', sa.String(20), nullable=True),
@@ -173,7 +148,7 @@ def upgrade() -> None:
     op.create_table('financial_accounts',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('client_id', sa.Integer(), nullable=False),
-        sa.Column('account_type', sa.Enum('bank_current', 'bank_savings', 'credit_card', 'payment_processor', 'merchant', 'other', name='accounttype'), nullable=False),
+        sa.Column('account_type', account_type, nullable=False),
         sa.Column('provider', sa.String(255), nullable=False),
         sa.Column('account_name', sa.String(255), nullable=False),
         sa.Column('currency_code', sa.String(3), server_default='GBP', nullable=False),
@@ -241,7 +216,7 @@ def upgrade() -> None:
         sa.Column('uploaded_by_contact_id', sa.Integer(), nullable=True),
         sa.Column('uploaded_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('extracted_data', sa.JSON(), nullable=True),
-        sa.Column('extraction_status', sa.Enum('pending', 'processing', 'extracted', 'failed', name='extractionstatus'), server_default='pending', nullable=False),
+        sa.Column('extraction_status', extraction_status, server_default='pending', nullable=False),
         sa.Column('processing_error', sa.String(2000), nullable=True),
         sa.Column('notes', sa.String(2000), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -259,7 +234,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('engagement_id', sa.Integer(), nullable=False),
         sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('status', sa.Enum('draft', 'sent', 'partial', 'complete', 'expired', name='requestsetstatus'), server_default='draft', nullable=False),
+        sa.Column('status', request_set_status, server_default='draft', nullable=False),
         sa.Column('due_date', sa.Date(), nullable=True),
         sa.Column('upload_token', sa.String(64), nullable=True),
         sa.Column('sent_at', sa.Date(), nullable=True),
@@ -279,7 +254,7 @@ def upgrade() -> None:
         sa.Column('description', sa.String(500), nullable=True),
         sa.Column('expected_count', sa.Integer(), server_default='1', nullable=False),
         sa.Column('is_required', sa.Boolean(), server_default='true', nullable=False),
-        sa.Column('status', sa.Enum('pending', 'partial', 'complete', 'waived', name='requestitemstatus'), server_default='pending', nullable=False),
+        sa.Column('status', request_item_status, server_default='pending', nullable=False),
         sa.Column('assigned_to_contact_id', sa.Integer(), nullable=True),
         sa.Column('due_date', sa.Date(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
