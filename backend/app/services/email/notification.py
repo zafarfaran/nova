@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.ai import get_ai_provider
 from app.config import get_settings
 from app.models.client import Client
-from app.models.document import Document
+from app.models.documents import Document
 from app.models.validation import ValidationResult, ValidationStatus
 from app.schemas.email import EmailPurpose, EmailRequest, EmailTone
 from app.services.email import EmailService
@@ -313,7 +313,7 @@ class EmailNotificationService:
         Returns:
             True if email sent successfully
         """
-        from app.models.engagement import Engagement
+        from app.models.engagements import Engagement
 
         client = self.db.get(Client, client_id)
         engagement = self.db.get(Engagement, engagement_id)

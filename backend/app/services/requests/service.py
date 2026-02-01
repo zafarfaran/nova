@@ -138,7 +138,7 @@ class RequestItemService:
 
     def link_document(self, request_item_id: int, document_id: int) -> bool:
         """Link a document to a request item."""
-        from app.models.document import Document
+        from app.models.documents import Document
         
         request_item = self.get(request_item_id)
         document = self.db.get(Document, document_id)
@@ -154,7 +154,7 @@ class RequestItemService:
 
     def unlink_document(self, request_item_id: int, document_id: int) -> bool:
         """Unlink a document from a request item."""
-        from app.models.document import Document
+        from app.models.documents import Document
         
         request_item = self.get(request_item_id)
         document = self.db.get(Document, document_id)

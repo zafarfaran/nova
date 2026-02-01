@@ -16,11 +16,11 @@ from app.core.vat_rules import (
     VALID_VAT_RATES,
     VAT_NUMBER_PATTERN,
 )
-from app.models.document import Document, DocumentStatus
+from app.models.documents import Document, DocumentStatus
 from app.models.document_version import DocumentVersion
 from app.utils.bank_statement_tools import reconcile_balances
 from app.models.validation import RuleType, ValidationResult, ValidationStatus
-from app.models.engagement import Engagement
+from app.models.engagements import Engagement
 
 logger = logging.getLogger(__name__)
 

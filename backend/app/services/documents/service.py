@@ -5,7 +5,7 @@ from typing import BinaryIO
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.document import Document, DocumentStatus
+from app.models.documents import Document, DocumentStatus
 from app.models.request_item import RequestItem
 from app.schemas.document import DocumentCreate, DocumentUpdate
 from app.storage import StorageProvider, get_storage

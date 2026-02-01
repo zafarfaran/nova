@@ -66,8 +66,8 @@ class ClientService:
         """
         from sqlalchemy import func, select
         from sqlalchemy.exc import IntegrityError
-        from app.models.document import Document
-        from app.models.engagement import Engagement
+        from app.models.documents import Document
+        from app.models.engagements import Engagement
         
         client = self.get(client_id)
         if not client:

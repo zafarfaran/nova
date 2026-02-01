@@ -3,7 +3,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.engagement import Engagement
+from app.models.engagements import Engagement
 from app.schemas.engagement import EngagementCreate, EngagementUpdate
 from app.services.audit import AuditService
 
