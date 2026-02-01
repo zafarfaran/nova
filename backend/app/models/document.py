@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from app.models.validation import ValidationResult
     from app.models.client import Client
     from app.models.engagement import Engagement
-    from app.models.document_type import DocumentType as DocumentTypeModel
+    from app.models.document_type import DocumentType
     from app.models.counterparty import Counterparty
     from app.models.financial_account import FinancialAccount
     from app.models.document_version import DocumentVersion
@@ -97,7 +97,7 @@ class Document(Base, TimestampMixin):
     engagement: Mapped["Engagement | None"] = relationship(
         "Engagement", back_populates="documents"
     )
-    document_type_ref: Mapped["DocumentTypeModel | None"] = relationship(
+    document_type: Mapped["DocumentType | None"] = relationship(
         "DocumentType", back_populates="documents"
     )
     counterparty: Mapped["Counterparty | None"] = relationship(

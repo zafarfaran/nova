@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -31,6 +31,9 @@ class DocumentVersion(Base):
     """
 
     __tablename__ = "document_versions"
+    __table_args__ = (
+        UniqueConstraint("document_id", "version_no", name="uq_document_versions_document_version"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False, index=True)

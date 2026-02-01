@@ -60,7 +60,7 @@ class DocumentType(Base, TimestampMixin):
     # Relationships
     category: Mapped["DocumentCategory"] = relationship("DocumentCategory", back_populates="document_types")
     documents: Mapped[list["Document"]] = relationship(
-        "Document", back_populates="document_type_ref", cascade="all, delete-orphan"
+        "Document", back_populates="document_type", cascade="all, delete-orphan"
     )
     request_items: Mapped[list["RequestItem"]] = relationship(
         "RequestItem", back_populates="document_type", cascade="all, delete-orphan"
