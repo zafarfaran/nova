@@ -5,286 +5,418 @@
 <h1 align="center">Nova — 10x Your Accounting Power</h1>
 
 <p align="center">
-  <strong>Stop drowning in spreadsheets. Nova is the AI-powered platform that turns accountants into productivity machines.</strong>
+  <strong>Stop chasing paperwork. Nova helps accountants collect, process, and validate client documents faster using AI.</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Next.js-14-black?style=flat&logo=next.js" alt="Next.js" />
+  <img src="https://img.shields.io/badge/Next.js-15-black?style=flat&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/FastAPI-Python-009688?style=flat&logo=fastapi" alt="FastAPI" />
   <img src="https://img.shields.io/badge/AI-Claude%20%2B%20GPT-5A67D8?style=flat" alt="AI Powered" />
-  <img src="https://img.shields.io/badge/PostgreSQL-Database-336791?style=flat&logo=postgresql" alt="PostgreSQL" />
-</p>
-
-<p align="center">
-  Nova combines cutting-edge AI with human expertise to help accounting firms manage hundreds of clients, automate compliance, and reclaim their time. Process thousands of documents in seconds, not hours.
+  <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat&logo=supabase" alt="Supabase" />
 </p>
 
 ---
 
 ## 📚 Table of Contents
 
-- [Why Nova?](#-why-nova)
+- [What is Nova?](#-what-is-nova)
 - [Key Features](#-key-features)
-- [Novel Approaches](#-novel-approaches)
 - [Tech Stack](#️-tech-stack)
+- [Architecture](#️-architecture)
+- [Database Schema](#-database-schema)
 - [Getting Started](#-getting-started)
 - [Project Structure](#-project-structure)
-- [Architecture](#️-architecture)
-- [Custom Functions (AI Chat)](#-custom-functions-ai-chat)
-- [Specialized AI Agents](#-specialized-ai-agents)
-- [Design Philosophy](#-design-philosophy)
-- [Key Metrics](#-key-metrics)
-- [Security & Compliance](#-security--compliance)
-- [Deployment](#-deployment)
-- [License](#-license)
+- [API Endpoints](#-api-endpoints)
+- [AI Chat Tools](#-ai-chat-tools)
+- [Roadmap](#-roadmap)
 
 ---
 
-## ⚡ Why Nova?
+## ⚡ What is Nova?
+
+Nova is an **AI-powered document management platform** designed for accountants to speed up client documentation across multiple engagement types:
+
+| Engagement Type | What Nova Helps With |
+|-----------------|---------------------|
+| 📊 **VAT Returns** | Collect and validate invoices, receipts, bank statements |
+| 📑 **Tax Returns** | Gather P60s, dividend vouchers, rental income docs |
+| 📈 **Annual Accounts** | Organize financial records, bank reconciliations |
+| 🔍 **Audits** | Track evidence collection and compliance |
+| 📒 **Bookkeeping** | Manage ongoing document flow from clients |
 
 ### The Problem
-Traditional accounting workflows are broken:
-- Accountants spend **80% of their time** on manual data entry
-- Processing VAT returns takes **4-6 hours per client**
-- Email follow-ups and reminders are done **manually**
-- Bank reconciliation happens in **weekly batches**
-- Human error rates sit at **5-10%**
-- Firms are limited to **50-75 clients per accountant**
+
+- Accountants spend **hours** chasing clients for documents
+- Manual data entry from invoices and receipts is tedious
+- VAT validation errors get caught at the last minute
+- No visibility into which clients are on track
 
 ### The Nova Solution
-We built Nova to solve these problems with AI:
-- **95% time saved** — What took hours now takes minutes
-- **99.9% accuracy** — AI catches errors humans miss
-- **10,000+ docs/hour** — Process documents at scale
-- **Real-time banking** — Transactions sync automatically
-- **Zero-touch automation** — Emails, reminders, and follow-ups run on autopilot
-- **10x client capacity** — Manage 150-250 clients per accountant
 
-### The Result
-Accounting firms using Nova:
-- Serve **3x more clients** with the same team
-- Reduce VAT prep time by **75%**
-- Catch **10x more errors** before submission
-- Free up **20+ hours per week** for strategic work
-- Delight clients with **instant responses** and **real-time status**
+- **AI extracts data** from invoices, receipts, and bank statements automatically
+- **Smart chaser emails** remind clients about missing documents
+- **Built-in validation** catches errors before submission
+- **Real-time dashboard** shows client status at a glance
 
 ---
 
 ## 🚀 Key Features
 
-### Intelligence That Thinks Ahead
-- **10,000+ documents/hour** — Process invoices, receipts, and statements at scale
-- **99.9% accuracy** — Claude AI extracts, validates, and categorizes with precision
-- **<1s per invoice** — What used to take hours now takes seconds
-- **Multimodal extraction** — Seamless handling of PDFs, images, and scanned documents
+### 📄 AI-Powered Document Processing
+- **Automatic extraction** — Invoice numbers, dates, amounts, VAT, supplier info
+- **PDF + Image support** — Handles scans, photos, and digital documents
+- **Multi-version tracking** — Keep history of document changes
+- **Batch processing** — Process all documents for an engagement at once
 
-### Real-Time Banking & Reconciliation
-- **Live bank sync** — Connect any UK bank for automatic transaction flow
-- **Auto-reconciliation** — Transactions matched and categorized in the background
-- **Smart categorization** — AI learns your patterns and applies them automatically
+### ✅ Built-in Compliance Validation
+- **VAT number format** — UK VAT number validation
+- **Rate validation** — Checks against valid UK VAT rates (0%, 5%, 20%)
+- **Totals matching** — Net + VAT = Gross verification
+- **Duplicate detection** — Catches potential duplicate invoices
+- **AI anomaly detection** — Claude-powered unusual pattern detection
 
-### Autopilot Mode
-- **Zero-touch automation** — Smart reminders, automated chasers, deadline alerts
-- **24/7 monitoring** — Nova watches your clients so you don't have to
-- **Email automation** — Branded, AI-generated emails for every client interaction
+### 📋 Document Request System
+- **Request sets** — Group document requests by engagement
+- **Status tracking** — Pending → Partial → Complete
+- **Assignment** — Assign requests to specific client contacts
+- **Templates** — Reusable request templates by engagement type
 
-### Anomaly Detection
-- **Duplicate detection** — Catches duplicate invoices before they become problems
-- **Suspicious amounts** — Flags unusual transactions automatically
-- **VAT validation** — Real-time HMRC VAT number verification
-- **Missing data alerts** — Identifies gaps before submission
+### 📧 Automated Chasers
+- **AI-generated emails** — Personalized, professional chaser messages
+- **Secure upload portal** — Clients upload via unique token links
+- **Reminder tracking** — Automatic follow-ups for missing documents
+- **Response logging** — Track what clients have submitted
 
-### Command Center Dashboard
-- **Manage hundreds of clients** — Bird's-eye view of every client, deadline, and document
-- **Advanced filtering** — Sort, search, and find exactly who needs attention
-- **Real-time status** — Know instantly which clients are on track or need help
-- **AI-powered chat** — Natural language interface to find clients and surface status
+### 💬 AI Chat Assistant
+- **Natural language queries** — "Which clients have missing documents?"
+- **Tool calling** — Search clients, view checklists, send emails
+- **Streaming responses** — Real-time AI responses
+- **Session history** — Persistent chat conversations
 
-### One-Click VAT Returns
-- **HMRC-ready exports** — Generate compliant VAT returns instantly
-- **Automated validation** — All data checked and categorized before generation
-- **Review workflow** — Document-level approve/reject for efficient processing
-
-## 💡 Novel Approaches
-
-### Dual Validation Loop
-Rules-based validation combined with AI anomaly detection, resolved through streamlined human approval. This hybrid approach catches both known patterns and unexpected edge cases.
-
-### Multimodal Document Blending
-PDF structure extraction and vision-based OCR normalized into a unified schema. Whether it's a pristine digital invoice or a crumpled receipt photo, Nova handles it the same way.
-
-### Document-Level Resolution
-Reduce review fatigue by approving or rejecting all issues for a document at once. No more clicking through individual line items.
-
-### Flow-Aware UX
-Client stages automatically update based on validation and review state. Accountants always see the current reality, not stale snapshots.
-
-### AI-Powered Email Service
-Branded, context-aware emails generated by Claude for every client interaction. From welcome messages to validation issues to VAT return notifications—all perfectly on-brand.
-
-### Banking Integration
-Direct integration with UK banks via secure APIs. Transactions sync in real-time, reconciliation happens automatically, and accountants see a complete financial picture.
+### 🔍 Full Audit Trail
+- **Entity tracking** — Log changes to any record
+- **Actor tracking** — Who made what changes
+- **Change history** — JSON diff of modifications
 
 ---
 
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **Next.js 14** — React framework with App Router and Server Components
-- **TypeScript** — Type-safe development
-- **Tailwind CSS** — Utility-first styling with custom design system
-- **NextAuth.js** — Authentication with multiple providers
-- **TanStack Query** — Data fetching and caching
-- **shadcn/ui** — Accessible component library
+| Technology | Purpose |
+|------------|---------|
+| **Next.js 15** | React framework with App Router |
+| **TypeScript** | Type-safe development |
+| **Tailwind CSS** | Utility-first styling |
+| **NextAuth.js** | Authentication |
+| **Prisma** | Database ORM for frontend |
 
 ### Backend
-- **FastAPI** — High-performance Python API framework
-- **SQLAlchemy** — ORM with PostgreSQL
-- **Pydantic** — Data validation and settings management
-- **Alembic** — Database migrations
-- **SMTP Integration** — Email delivery with branded templates
+| Technology | Purpose |
+|------------|---------|
+| **FastAPI** | High-performance Python API |
+| **SQLAlchemy** | ORM with relationship support |
+| **Pydantic** | Data validation and settings |
+| **Alembic** | Database migrations |
 
 ### AI & Processing
-- **Anthropic Claude (Sonnet 4.5)** — Primary AI for document extraction and analysis
-- **OpenAI GPT-4** — Fallback and specialized tasks
-- **pdfplumber** — PDF text and structure extraction
-- **Vision APIs** — Image-based OCR and analysis
-- **Custom validation agents** — Specialized validators for each document type
+| Technology | Purpose |
+|------------|---------|
+| **Anthropic Claude** | Primary AI for extraction & analysis |
+| **OpenAI GPT-4** | Fallback and specialized tasks |
+| **pdfplumber** | PDF text extraction |
+| **Vision APIs** | Image-based OCR |
 
 ### Infrastructure
-- **PostgreSQL** — Primary database
-- **Docker** — Containerization and deployment
-- **GitHub Actions** — CI/CD pipeline
-- **Environment-based config** — Separate dev/staging/production settings
-
-### Banking & Compliance
-- **Open Banking APIs** — Secure bank connections
-- **HMRC API Integration** — VAT number validation (PoC)
-- **Encrypted storage** — Bank-grade security for sensitive data
-
+| Technology | Purpose |
+|------------|---------|
+| **Supabase** | Managed PostgreSQL + Auth + Storage |
+| **UploadThing / S3** | File storage options |
+| **SMTP** | Email delivery |
 
 ---
 
-## 🏗️ Architecture 
-```
-┌───────────────────┐    ┌───────────────┐    ┌───────────┐    ┌───────────────┐
-│   Accountant UI   │───▶│   Next.js API  │───▶│  Storage  │───▶│  FastAPI Hub   │
-└───────────────────┘    └───────────────┘    └───────────┘    └───────┬───────┘
-                                                                       │
-                                                                       ├──▶ PDF (pdfplumber)
-                                                                       ├──▶ Images (vision)
-                                                                       └──▶ AI Models (OpenAI/Anth)
-                                                                                   │
-                                                                                   v
-                                                                        ┌───────────────────┐
-                                                                        │  Normalized Data  │
-                                                                        └─────────┬─────────┘
-                                                                                  │
-                                                                                  v
-                                                                        ┌───────────────────┐
-                                                                        │ Validation + Review│
-                                                                        │ (Rules + AI Anomaly)│
-                                                                        └─────────┬─────────┘
-                                                                                  │
-                                                                                  v
-                                                                        ┌───────────────────┐
-                                                                        │ Validation Agents │
-                                                                        │ Invoice/Receipt/  │
-                                                                        │ Bank/Payroll/     │
-                                                                        │ Contract/VAT      │
-                                                                        └─────────┬─────────┘
-                                                                                  │
-                                                                                  v
-                                                                        ┌───────────────────┐
-                                                                        │Custom Functions + │
-                                                                        │        DB         │
-                                                                        └─────────┬─────────┘
-                                                                                  │
-                                                                                  v
-                                                                        ┌───────────────────┐
-                                                                        │  Ready to Submit  │
-                                                                        └─────────┬─────────┘
-                                                                                  │
-                                                                                  v
-                                                                        ┌───────────────────┐
-                                                                        │   Chaser Agent    │
-                                                                        └───────────────────┘
-
-
-                           ┌───────────────────┐
-                           │    AI Chat UI     │
-                           └─────────┬─────────┘
-                                     │
-                                     v
-                           ┌───────────────────┐
-                           │   Next.js API     │
-                           └─────────┬─────────┘
-                                     │
-                                     v
-                           ┌──────────────────────────┐
-                           │ Custom Functions + DB    │
-                           └─────────┬────────────────┘
-                                     │
-                                     ├──────────────▶ (read/write) Normalized Data
-                                     │
-                                     ├──────────────▶ (read/write) Validation + Review
-                                     │
-                                     └──────────────▶ (read/write) Ready to Submit
+## 🏗️ Architecture
 
 ```
-
-## 🤝 Custom Functions (AI Chat)
-
-Nova's AI chat interface uses custom functions to interact with your database and perform actions:
-
-### Client Management
-- **List and search clients** — Natural language queries like "show me all clients in London"
-- **Fetch client details** — Complete profiles including contact info, VAT scheme, entity type
-- **Checklist status** — Real-time view of document completion and validation status
-- **Create new clients** — Add clients through conversational interface
-- **Update client data** — Modify contact info, VAT registration, deadlines
-
-### Document Operations
-- **Document status** — Check which documents are uploaded, validated, or flagged
-- **Validation results** — Surface specific issues and anomalies
-- **Bulk operations** — Approve/reject multiple documents or clients at once
-- **Search across documents** — Find specific invoices, receipts, or statements
-
-### Workflow Automation
-- **Identify clients needing attention** — Flag overdue deadlines, missing docs, validation errors
-- **Priority scoring** — AI ranks clients by urgency and risk
-- **Automated reminders** — Schedule follow-ups based on client status
-- **Report generation** — Create summaries and status reports
-
-### Analytics & Insights
-- **Processing metrics** — Documents processed, accuracy rates, time saved
-- **Client trends** — Identify patterns across your client base
-- **Bottleneck detection** — Find workflow slowdowns and inefficiencies
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND (Next.js)                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │  Dashboard   │  │  Onboarding  │  │   AI Chat    │  │   Auth       │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                              │                                               │
+│                         Prisma ORM                                           │
+└─────────────────────────────┬───────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SUPABASE (PostgreSQL)                                │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  clients │ engagements │ documents │ request_sets │ audit_logs │ ...   │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────┬───────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            BACKEND (FastAPI)                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Clients    │  │ Engagements  │  │  Documents   │  │  Validation  │     │
+│  │   Service    │  │   Service    │  │   Service    │  │   Service    │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Requests   │  │   Chasers    │  │    Chat      │  │    Email     │     │
+│  │   Service    │  │   Service    │  │   Service    │  │   Service    │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                              │                                               │
+│                              ▼                                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      AI PROCESSING LAYER                             │    │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                  │    │
+│  │  │ PDF Extract │  │ AI Vision   │  │ Validation  │                  │    │
+│  │  │ (pdfplumber)│  │ (Claude)    │  │ (Rules+AI)  │                  │    │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘                  │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 🤖 Specialized AI Agents
+## 📊 Database Schema
 
-Nova employs purpose-built AI agents for different document types and workflows:
+Nova uses an **enterprise-grade schema** designed for multi-client, multi-engagement workflows:
 
-### Validation Agents
-Each agent is trained with domain-specific rules and patterns:
+```mermaid
+erDiagram
+    clients ||--o{ client_contacts : has
+    clients ||--o{ engagements : has
+    clients ||--o{ counterparties : has
+    clients ||--o{ financial_accounts : has
+    clients ||--o{ documents : owns
+    
+    engagements ||--o{ documents : contains
+    engagements ||--o{ request_sets : has
+    engagements ||--o{ audit_logs : logs
+    
+    request_sets ||--o{ request_items : contains
+    request_items }o--o{ documents : satisfied_by
+    
+    document_categories ||--o{ document_types : groups
+    document_types ||--o{ documents : typed_as
+    documents ||--o{ document_versions : versioned
+    file_objects ||--o{ document_versions : stores
+```
 
-- **Invoice Agent** — VAT calculations, line item validation, supplier verification
-- **Receipt Agent** — Expense categorization, duplicate detection, amount verification
-- **Bank Statement Agent** — Transaction reconciliation, anomaly detection, balance verification
-- **Payroll Agent** — PAYE compliance, NI calculations, employee record validation
-- **Contract Agent** — Term extraction, obligation tracking, renewal alerts
-- **VAT Certificate Agent** — HMRC validation, registration status, scheme verification
+### Core Entities
 
-### Workflow Agents
-Specialized agents for automation and communication:
+| Entity | Purpose |
+|--------|---------|
+| **clients** | Businesses (sole traders, limited companies, etc.) |
+| **client_contacts** | Multiple contacts per client |
+| **engagements** | Work periods (VAT return Q1 2026, Annual Accounts 2025) |
+| **documents** | Uploaded files with extracted data |
+| **document_versions** | Version history with extraction results |
+| **document_types** | Configurable document categories |
+| **request_sets** | Grouped document requests |
+| **request_items** | Individual document requests |
+| **counterparties** | Suppliers and customers |
+| **financial_accounts** | Bank accounts, credit cards |
+| **audit_logs** | Complete change history |
 
-- **Chaser Agent** — Automated follow-ups, deadline reminders, escalation workflows
-- **Email Agent** — Context-aware email generation with Nova branding
-- **Banking Agent** — Real-time transaction sync, categorization, reconciliation
-- **Anomaly Agent** — Cross-document pattern detection, fraud alerts, unusual activity
+---
 
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+
+- Python 3.11+
+- Supabase account (or local PostgreSQL)
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/your-org/nova.git
+cd nova
+
+# Frontend
+npm install
+
+# Backend
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: .\venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2. Environment Setup
+
+Create `.env` in root:
+```env
+# Database (Supabase)
+DATABASE_URL="postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres"
+DIRECT_URL="postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres"
+SUPABASE_DATA_URL="postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres"
+
+# AI
+ANTHROPIC_API_KEY="sk-ant-..."
+OPENAI_API_KEY="sk-..."
+
+# Storage
+STORAGE_PROVIDER="uploadthing"
+UPLOADTHING_TOKEN="..."
+
+# Email
+SMTP_HOST="smtp.ionos.co.uk"
+SMTP_PORT=587
+SMTP_USERNAME="..."
+SMTP_PASSWORD="..."
+SMTP_FROM_EMAIL="nova@yourdomain.com"
+```
+
+### 3. Database Setup
+
+```bash
+# Generate Prisma client (frontend)
+npx prisma generate
+
+# Run Alembic migrations (backend)
+cd backend
+alembic upgrade head
+```
+
+### 4. Run Development Servers
+
+```bash
+# Terminal 1: Frontend
+npm run dev
+
+# Terminal 2: Backend
+cd backend
+uvicorn app.main:app --reload --port 8000
+```
+
+---
+
+## 📁 Project Structure
+
+```
+nova/
+├── src/                      # Next.js frontend
+│   ├── app/                  # App Router pages
+│   │   ├── accountant/       # Dashboard views
+│   │   ├── onboard/          # Client onboarding
+│   │   └── api/              # API routes
+│   └── server/               # Server utilities
+│
+├── backend/                  # FastAPI backend
+│   ├── app/
+│   │   ├── api/v1/          # REST endpoints
+│   │   ├── models/          # SQLAlchemy models
+│   │   ├── schemas/         # Pydantic schemas
+│   │   ├── services/        # Business logic
+│   │   ├── ai/              # AI providers & tools
+│   │   └── tasks/           # Background tasks
+│   └── alembic/             # Database migrations
+│
+├── prisma/                   # Prisma schema (frontend ORM)
+└── generated/               # Generated Prisma client
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Clients
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/clients` | Create client |
+| GET | `/api/v1/clients` | List clients |
+| GET | `/api/v1/clients/{id}` | Get client |
+| PATCH | `/api/v1/clients/{id}` | Update client |
+| DELETE | `/api/v1/clients/{id}` | Delete client |
+
+### Engagements
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/engagements` | Create engagement |
+| GET | `/api/v1/engagements` | List engagements |
+| GET | `/api/v1/engagements/{id}` | Get engagement |
+| PATCH | `/api/v1/engagements/{id}` | Update engagement |
+| POST | `/api/v1/engagements/{id}/lock` | Lock engagement |
+
+### Documents
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/documents/upload` | Upload document |
+| POST | `/api/v1/documents/sync` | Sync from storage |
+| GET | `/api/v1/documents` | List documents |
+| POST | `/api/v1/documents/{id}/process` | Process document |
+| GET | `/api/v1/documents/{id}/extracted-data` | Get extracted data |
+
+### Validation
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/validation/run/{doc_id}` | Run validation |
+| GET | `/api/v1/validation/results/{doc_id}` | Get results |
+| GET | `/api/v1/validation/summary/{engagement_id}` | Get summary |
+
+### Requests
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/requests/sets` | Create request set |
+| POST | `/api/v1/requests/items` | Create request item |
+| POST | `/api/v1/requests/items/{id}/documents/{doc_id}` | Link document |
+
+### Chat
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/chat/sessions` | Create session |
+| POST | `/api/v1/chat/sessions/{id}/chat` | Send message |
+| POST | `/api/v1/chat/stream` | Stream response |
+
+---
+
+## 🤖 AI Chat Tools
+
+Nova's chat assistant can perform actions through tool calling:
+
+| Tool | Description |
+|------|-------------|
+| `list_clients` | List all clients |
+| `search_clients` | Search by name/email |
+| `get_client_details` | Full client profile |
+| `get_document_checklist` | Document status for client |
+| `get_clients_needing_attention` | Flag at-risk clients |
+| `create_client` | Add new client |
+| `update_checklist_item` | Update request status |
+| `send_document_request_email` | Send chaser email |
+
+---
+
+## 🗺️ Roadmap
+
+### ✅ Completed
+- [x] Enterprise schema with engagements
+- [x] Document request system
+- [x] AI-powered extraction
+- [x] Validation engine
+- [x] Chaser email system
+- [x] AI chat assistant
+- [x] Supabase migration
+
+### 🚧 In Progress
+- [ ] Client portal for document uploads
+- [ ] Dashboard UI improvements
+- [ ] Bulk operations
+
+### 📋 Planned
+- [ ] HMRC MTD integration
+- [ ] Bank feed integration
+- [ ] Mobile app
+- [ ] Team collaboration features
+- [ ] White-label support
+
+---
 
 <p align="center">
   <strong>Built with ❤️ by the Nova Team</strong><br>
