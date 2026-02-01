@@ -115,8 +115,8 @@ class ValidationService:
                 )
                 return latest_version.extracted_data
         
-        # Fall back to document's extracted_data (legacy)
-        return doc.extracted_data
+        # Fall back to document's get_extracted_data method (legacy)
+        return doc.get_extracted_data()
 
     def validate_document(
         self, document_id: int, include_ai_validation: bool = True
@@ -1849,7 +1849,7 @@ class ValidationService:
         warnings = sum(1 for r in all_results if r.status == ValidationStatus.WARNING)
 
         return {
-            "engagement_id": engagement_id,
+            "vat_period_id": engagement_id,  # Schema uses vat_period_id for backwards compatibility
             "total_documents": total_docs,
             "validated_documents": validated_docs,
             "failed_documents": failed_docs,
@@ -1858,5 +1858,5 @@ class ValidationService:
             "passed_validations": passed,
             "failed_validations": failed,
             "warning_validations": warnings,
-            "validation_rate": (validated_docs / total_docs * 100) if total_docs > 0 else 0,
+            "validation_rate": (validated_docs / total_docs * 100) if total_docs > 0 else 0.0,
         }

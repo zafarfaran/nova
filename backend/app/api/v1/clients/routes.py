@@ -137,18 +137,17 @@ def onboarding_complete(
                 detail="Engagement not found for client",
             )
 
-        description = (
-            "Onboarding completed."
-            f" completed={data.completed_items},"
-            f" not_applicable={data.not_applicable_items},"
-            f" total={data.total_items}"
-        )
         AuditService(db).log(
+            client_id=client_id,
             engagement_id=engagement.id,
             action="onboarding_complete",
-            description=description,
             entity_type="client",
             entity_id=client_id,
+            changes={
+                "completed_items": data.completed_items,
+                "not_applicable_items": data.not_applicable_items,
+                "total_items": data.total_items,
+            },
         )
         logger.info(
             "Onboarding completion logged for client %s (engagement %s)",
