@@ -224,7 +224,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['document_id'], ['documents.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['file_object_id'], ['file_objects.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['uploaded_by_contact_id'], ['client_contacts.id']),
-        sa.PrimaryKeyConstraint('id')
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('document_id', 'version_no', name='uq_document_versions_document_version')
     )
     op.create_index('ix_document_versions_document_id', 'document_versions', ['document_id'])
     op.create_index('ix_document_versions_file_object_id', 'document_versions', ['file_object_id'])
@@ -250,7 +251,7 @@ def upgrade() -> None:
     op.create_table('request_items',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('request_set_id', sa.Integer(), nullable=False),
-        sa.Column('document_type_id', sa.Integer(), nullable=False),
+        sa.Column('document_type_id', sa.Integer(), nullable=True),
         sa.Column('description', sa.String(500), nullable=True),
         sa.Column('expected_count', sa.Integer(), server_default='1', nullable=False),
         sa.Column('is_required', sa.Boolean(), server_default='true', nullable=False),

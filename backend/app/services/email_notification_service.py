@@ -158,7 +158,7 @@ class EmailNotificationService:
 
         context_data = {
             "document_name": document.filename,
-            "document_type": document.document_type_ref.name if document.document_type_ref else "document",
+            "document_type": document.document_type.name if document.document_type else "document",
             "issues": issues,
             "issue_count": len(issues),
             "vat_period": period_str,
@@ -223,7 +223,7 @@ class EmailNotificationService:
 
         context_data = {
             "document_name": document.filename,
-            "document_type": document.document_type_ref.name if document.document_type_ref else "document",
+            "document_type": document.document_type.name if document.document_type else "document",
             "rejected_by": rejected_by,
             "rejection_reason": rejection_reason,
             "vat_period": period_str,
