@@ -194,7 +194,9 @@ def upgrade() -> None:
     op.add_column('documents', sa.Column('meta', sa.JSON(), nullable=True))
     
     # Create foreign key constraints for documents
-    op.create_foreign_key('fk_documents_client_id', 'documents', 'clients', ['client_id'], ['id'])
+    # WARNING: Using RESTRICT (default) instead of CASCADE to prevent accidental data loss.
+    # Client deletion will fail if documents exist. Consider soft-delete or manual cleanup.
+    op.create_foreign_key('fk_documents_client_id', 'documents', 'clients', ['client_id'], ['id'], ondelete='RESTRICT')
     op.create_foreign_key('fk_documents_engagement_id', 'documents', 'engagements', ['engagement_id'], ['id'])
     op.create_foreign_key('fk_documents_document_type_id', 'documents', 'document_types', ['document_type_id'], ['id'])
     op.create_foreign_key('fk_documents_counterparty_id', 'documents', 'counterparties', ['counterparty_id'], ['id'])

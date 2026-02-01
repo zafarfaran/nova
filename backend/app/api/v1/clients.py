@@ -78,12 +78,28 @@ def update_client(
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_client(client_id: int, db: Session = Depends(get_db)) -> None:
-    """Delete a client."""
+    """Delete a client.
+    
+    WARNING: This operation will fail if the client has associated documents or engagements.
+    The database enforces RESTRICT constraints to prevent accidental data loss.
+    
+    For production use, ensure:
+    1. Database backups are in place
+    2. All documents and engagements are removed or archived first
+    3. Consider implementing a soft-delete pattern for production
+    """
     service = ClientService(db)
-    if not service.delete(client_id):
+    try:
+        if not service.delete(client_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
+            )
+    except ValueError as e:
+        # Handle validation errors from service layer
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
-        )
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        ) from e
 
 
 @router.post(
