@@ -28,6 +28,7 @@
 - [Project Structure](#-project-structure)
 - [API Endpoints](#-api-endpoints)
 - [AI Chat Tools](#-ai-chat-tools)
+- [Monitoring & Metrics](#-monitoring--metrics)
 - [Roadmap](#-roadmap)
 
 ---
@@ -390,6 +391,49 @@ Nova's chat assistant can perform actions through tool calling:
 | `create_client` | Add new client |
 | `update_checklist_item` | Update request status |
 | `send_document_request_email` | Send chaser email |
+
+---
+
+## 📊 Monitoring & Metrics
+
+Nova includes a comprehensive metrics and logging system with Prometheus and Grafana integration.
+
+### Quick Start
+
+```bash
+# Start monitoring stack
+docker-compose -f docker-compose.monitoring.yml up -d
+
+# Access dashboards
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3001 (admin/admin)
+# Metrics: http://localhost:8000/metrics
+```
+
+### Features
+
+- ✅ **Always-on Metrics**: HTTP requests, LLM calls, costs, and business metrics
+- ✅ **Configurable Logging**: Per-section logging with verbosity control
+- ✅ **Request Tracking**: End-to-end request tracking with unique IDs
+- ✅ **Cost Tracking**: Real-time LLM cost calculation
+- ✅ **Structured Logging**: JSON-formatted logs
+
+### Configuration
+
+```bash
+# Enable logging for specific sections
+LOGGING_ENABLED=true
+LOGGING_ENABLED_SECTIONS=all
+
+# Set verbosity per section
+LOGGING_LEVELS=document_processing:DEBUG,chat:INFO
+```
+
+### Documentation
+
+- **[Full Documentation](backend/METRICS_LOGGING_README.md)** - Comprehensive guide
+- **[Quick Reference](backend/METRICS_QUICK_REFERENCE.md)** - Quick reference guide
+- **[Configuration Guide](backend/METRICS_CONFIG.md)** - Configuration details
 
 ---
 

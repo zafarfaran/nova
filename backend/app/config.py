@@ -58,6 +58,22 @@ class Settings(BaseSettings):
     smtp_from_name: str = "Nova VAT Assistant"
     smtp_use_tls: bool = True
 
+    # Logging Configuration
+    # Comma-separated list of sections to enable logging for
+    # Available sections: document_processing, chat, validation, email, api, client_management, ai
+    # Use "all" to enable all sections, or leave empty to disable all logging
+    logging_enabled_sections: str = "all"  # Default: all sections enabled
+    
+    # Enable/disable structured logging globally
+    logging_enabled: bool = True
+    
+    # Log verbosity per section (comma-separated key:value pairs)
+    # Format: section:level,section:level
+    # Levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    # Example: "document_processing:DEBUG,chat:INFO,validation:WARNING"
+    # Default log level is INFO if not specified for a section
+    logging_levels: str = ""  # Default: INFO for all sections
+
     def get_database_url(self) -> str:
         """Get SQLAlchemy database URL (PostgreSQL or SQLite fallback).
         
@@ -110,6 +126,49 @@ class Settings(BaseSettings):
         # Or if we have a database URL that points to supabase pooler
         db_url = self.get_database_url()
         return "supabase.com" in db_url or "pooler.supabase.com" in db_url
+    
+    def get_logging_enabled_sections(self) -> set[str]:
+        """Get set of enabled logging sections."""
+        if not self.logging_enabled:
+            return set()
+        if self.logging_enabled_sections.lower() == "all":
+            return {"all"}
+        return {s.strip().lower() for s in self.logging_enabled_sections.split(",") if s.strip()}
+    
+    def get_logging_levels(self) -> dict[str, str]:
+        """Get log levels per section.
+        
+        Returns:
+            Dictionary mapping section names to log levels (e.g., {"document_processing": "DEBUG"})
+        """
+        levels = {}
+        if self.logging_levels:
+            for pair in self.logging_levels.split(","):
+                pair = pair.strip()
+                if ":" in pair:
+                    section, level = pair.split(":", 1)
+                    levels[section.strip().lower()] = level.strip().upper()
+        return levels
+    
+    def is_logging_enabled_for_section(self, section: str) -> bool:
+        """Check if logging is enabled for a given section."""
+        enabled_sections = self.get_logging_enabled_sections()
+        if "all" in enabled_sections:
+            return True
+        return section.lower() in enabled_sections
+    
+    def get_log_level_for_section(self, section: str) -> str:
+        """Get the configured log level for a section.
+        
+        Args:
+            section: Section name
+            
+        Returns:
+            Log level string (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+            Defaults to INFO if not configured
+        """
+        levels = self.get_logging_levels()
+        return levels.get(section.lower(), "INFO")
 
 
 @lru_cache

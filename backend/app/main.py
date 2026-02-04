@@ -1,81 +1,27 @@
 """FastAPI application entry point."""
 
-import logging
-import sys
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 from app.api.v1 import audit, chaser, chat, clients, documents, email, engagements, requests, validation
 from app.config import get_settings
+from app.core.logging import setup_structured_logging
+from app.core.metrics import get_metrics
+from app.core.middleware import RequestTrackingMiddleware
 
-# Configure logging
-def setup_logging() -> None:
-    """Configure logging for the application."""
-    # Get root logger
-    root_logger = logging.getLogger()
-
-    # Set level based on debug setting (app logs can be debug, root stays quiet)
-    settings = get_settings()
-    app_log_level = logging.DEBUG if settings.debug else logging.INFO
-    root_logger.setLevel(logging.INFO)
-
-    # Clear existing handlers
-    root_logger.handlers.clear()
-
-    # Create console handler with formatting
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-
-    # Create formatter
-    formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    console_handler.setFormatter(formatter)
-
-    # Add handler to root logger
-    root_logger.addHandler(console_handler)
-
-    # Set specific loggers
-    for logger_name in [
-        "app",
-        "app.tasks",
-        "app.services",
-        "app.ai",
-    ]:
-        logging.getLogger(logger_name).setLevel(app_log_level)
-
-    # Always show extraction pipeline details
-    logging.getLogger("app.tasks.documents.document_tasks").setLevel(logging.INFO)
-    logging.getLogger("app.services.documents.extraction").setLevel(logging.INFO)
-    logging.getLogger("app.ai.openai_provider").setLevel(logging.INFO)
-    logging.getLogger("app.ai.anthropic_provider").setLevel(logging.INFO)
-
-    # Reduce noise from some libraries
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("botocore").setLevel(logging.WARNING)
-    logging.getLogger("boto3").setLevel(logging.WARNING)
-
-    logging.info("Logging configured successfully")
-
-
-# Setup logging before anything else
-setup_logging()
-
+# Setup structured logging before anything else
 settings = get_settings()
+setup_structured_logging(debug=settings.debug)
 
 app = FastAPI(
     title=settings.app_name,
     description="AI-powered document processing for UK VAT compliance",
     version="0.1.0",
 )
+
+# Request tracking middleware (must be before CORS)
+app.add_middleware(RequestTrackingMiddleware)
 
 # CORS middleware
 app.add_middleware(
@@ -102,6 +48,14 @@ async def root() -> dict:
         "docs": "/docs",
     }
 
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return get_metrics()
+
+
+import logging
 
 logger = logging.getLogger(__name__)
 
