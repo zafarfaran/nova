@@ -272,10 +272,27 @@ async def upload_document(
 
     # Link to request item if provided
     if request_item_id and not is_duplicate:
+        from app.models.requests.item import RequestItem
+        from app.services.requests import RequestItemService
+        
         request_item = db.get(RequestItem, request_item_id)
-        if request_item and doc not in request_item.documents:
-            request_item.documents.append(doc)
-            db.commit()
+        if request_item:
+            # Validate document type matches request item (if document type is set)
+            if doc.document_type_id and request_item.document_type_id:
+                if doc.document_type_id != request_item.document_type_id:
+                    # Log warning but don't fail - classification might be wrong
+                    logger.warning(
+                        f"Document {doc.id} type {doc.document_type_id} doesn't match "
+                        f"request item {request_item_id} expected type {request_item.document_type_id}"
+                    )
+            
+            # Link document
+            if doc not in request_item.documents:
+                request_item.documents.append(doc)
+                # Auto-update request item status
+                item_service = RequestItemService(db)
+                item_service._update_item_status(request_item)
+                db.commit()
 
     # Queue for AI processing if not a duplicate and auto_process is enabled
     if not is_duplicate and auto_process:

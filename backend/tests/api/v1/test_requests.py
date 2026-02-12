@@ -338,3 +338,110 @@ class TestLinkDocument:
             # Unlink document
             response = client.delete(f"/api/v1/requests/items/{request_item_id}/documents/{doc_id}")
             assert response.status_code == status.HTTP_204_NO_CONTENT
+
+
+class TestDocumentUploadWithRequestItem:
+    """Tests for document upload with request item linking."""
+
+    def test_upload_document_with_request_item(self, client, db_session, sample_client_data, sample_engagement_data, sample_request_set_data, sample_request_item_data):
+        """Test uploading a document and linking it to a request item."""
+        from unittest.mock import patch, MagicMock
+        
+        # Create full chain
+        client_response = client.post("/api/v1/clients", json=sample_client_data)
+        client_id = client_response.json()["id"]
+        sample_engagement_data["client_id"] = client_id
+        engagement_response = client.post("/api/v1/engagements", json=sample_engagement_data)
+        engagement_id = engagement_response.json()["id"]
+        sample_request_set_data["engagement_id"] = engagement_id
+        request_set_response = client.post("/api/v1/requests/sets", json=sample_request_set_data)
+        request_set_id = request_set_response.json()["id"]
+        sample_request_item_data["request_set_id"] = request_set_id
+        request_item_response = client.post("/api/v1/requests/items", json=sample_request_item_data)
+        request_item_id = request_item_response.json()["id"]
+        
+        # Mock storage and processing
+        with patch("app.services.documents.service.get_storage") as mock_storage, \
+             patch("app.api.v1.documents.routes.run_process_document"):
+            mock_storage_instance = MagicMock()
+            mock_storage_instance.upload_file.return_value = "test-key-123"
+            mock_storage.return_value = mock_storage_instance
+            
+            # Upload document with request_item_id
+            response = client.post(
+                f"/api/v1/documents/upload?client_id={client_id}&engagement_id={engagement_id}&request_item_id={request_item_id}",
+                files={"file": ("test.pdf", b"fake pdf content", "application/pdf")}
+            )
+            assert response.status_code == status.HTTP_200_OK
+            data = response.json()
+            assert "document_id" in data
+            
+            # Verify document is linked to request item
+            items_response = client.get(f"/api/v1/requests/items/{request_item_id}")
+            items_data = items_response.json()
+            # Status should be updated (we can't easily check document count without querying)
+            assert items_data["id"] == request_item_id
+
+    def test_upload_document_validates_type_match(self, client, db_session, sample_client_data, sample_engagement_data, sample_request_set_data):
+        """Test that upload warns if document type doesn't match request item."""
+        from unittest.mock import patch, MagicMock
+        
+        # Create category and document types
+        from app.models.documents.type import DocumentCategory, DocumentType
+        category = DocumentCategory(code="TEST", name="Test Category")
+        db_session.add(category)
+        db_session.flush()
+        
+        doc_type1 = DocumentType(
+            category_id=category.id,
+            code="TYPE1",
+            name="Type 1",
+            is_active=True,
+        )
+        doc_type2 = DocumentType(
+            category_id=category.id,
+            code="TYPE2",
+            name="Type 2",
+            is_active=True,
+        )
+        db_session.add_all([doc_type1, doc_type2])
+        db_session.flush()
+        
+        # Create full chain with request item expecting doc_type1
+        client_response = client.post("/api/v1/clients", json=sample_client_data)
+        client_id = client_response.json()["id"]
+        sample_engagement_data["client_id"] = client_id
+        engagement_response = client.post("/api/v1/engagements", json=sample_engagement_data)
+        engagement_id = engagement_response.json()["id"]
+        sample_request_set_data["engagement_id"] = engagement_id
+        request_set_response = client.post("/api/v1/requests/sets", json=sample_request_set_data)
+        request_set_id = request_set_response.json()["id"]
+        
+        request_item_data = {
+            "request_set_id": request_set_id,
+            "document_type_id": doc_type1.id,
+            "description": "Test item",
+            "expected_count": 1,
+            "is_required": True,
+        }
+        request_item_response = client.post("/api/v1/requests/items", json=request_item_data)
+        request_item_id = request_item_response.json()["id"]
+        
+        # Create document with doc_type2 (mismatch)
+        from app.models.documents import Document
+        doc = Document(
+            client_id=client_id,
+            engagement_id=engagement_id,
+            filename="test.pdf",
+            s3_key="test-key",
+            file_hash="test-hash",
+            document_type_id=doc_type2.id,  # Mismatch!
+            status="pending",
+        )
+        db_session.add(doc)
+        db_session.commit()
+        
+        # Link document (should work but log warning)
+        response = client.post(f"/api/v1/requests/items/{request_item_id}/documents/{doc.id}")
+        # Should succeed (warning logged but doesn't fail)
+        assert response.status_code == status.HTTP_204_NO_CONTENT

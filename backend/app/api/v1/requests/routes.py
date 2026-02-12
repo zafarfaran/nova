@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.request import (
+from app.schemas.requests.request import (
     RequestSetCreate,
     RequestSetList,
     RequestSetResponse,
@@ -14,8 +14,15 @@ from app.schemas.request import (
     RequestItemResponse,
     RequestItemUpdate,
 )
+from app.schemas.requests.template import (
+    CreateRequestSetFromTemplate,
+    RequestTemplateList,
+    RequestTemplateResponse,
+)
 from app.services.engagements import EngagementService
 from app.services.requests import RequestSetService, RequestItemService
+from app.models.requests.template import RequestTemplate
+from sqlalchemy import func, select
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -195,4 +202,184 @@ def unlink_document_from_request_item(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Request item or document not found",
+        )
+
+
+# Template endpoints
+@router.get("/templates", response_model=RequestTemplateList)
+def list_request_templates(
+    client_type: str | None = Query(None, description="Filter by client type"),
+    engagement_type: str | None = Query(None, description="Filter by engagement type"),
+    is_active: bool | None = Query(None, description="Filter by active status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> RequestTemplateList:
+    """List request templates with optional filters."""
+    stmt = select(RequestTemplate)
+    
+    if client_type:
+        stmt = stmt.where(RequestTemplate.client_type == client_type)
+    if engagement_type:
+        stmt = stmt.where(RequestTemplate.engagement_type == engagement_type)
+    if is_active is not None:
+        stmt = stmt.where(RequestTemplate.is_active == is_active)
+    
+    stmt = stmt.order_by(RequestTemplate.name).offset(skip).limit(limit)
+    
+    templates = list(db.scalars(stmt).all())
+    
+    # Get total count
+    count_stmt = select(RequestTemplate)
+    if client_type:
+        count_stmt = count_stmt.where(RequestTemplate.client_type == client_type)
+    if engagement_type:
+        count_stmt = count_stmt.where(RequestTemplate.engagement_type == engagement_type)
+    if is_active is not None:
+        count_stmt = count_stmt.where(RequestTemplate.is_active == is_active)
+    
+    total = db.scalar(select(func.count()).select_from(count_stmt.subquery())) or 0
+    
+    return RequestTemplateList(
+        items=[RequestTemplateResponse.model_validate(t) for t in templates],
+        total=total,
+    )
+
+
+@router.get("/templates/{template_id}", response_model=RequestTemplateResponse)
+def get_request_template(
+    template_id: int, db: Session = Depends(get_db)
+) -> RequestTemplateResponse:
+    """Get a request template by ID."""
+    template = db.get(RequestTemplate, template_id)
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+    return RequestTemplateResponse.model_validate(template)
+
+
+@router.post("/templates/{template_id}/create-set", response_model=RequestSetResponse, status_code=status.HTTP_201_CREATED)
+def create_request_set_from_template(
+    template_id: int,
+    data: CreateRequestSetFromTemplate,
+    db: Session = Depends(get_db),
+) -> RequestSetResponse:
+    """Create a RequestSet from a RequestTemplate."""
+    # Verify template exists
+    template = db.get(RequestTemplate, template_id)
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+    
+    # Verify engagement exists
+    engagement_service = EngagementService(db)
+    if not engagement_service.get(data.engagement_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found"
+        )
+    
+    # Create request set from template
+    service = RequestSetService(db)
+    try:
+        request_set = service.create_from_template(
+            engagement_id=data.engagement_id,
+            template_id=template_id,
+            name_override=data.name_override,
+        )
+        return RequestSetResponse.model_validate(request_set)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        )
+
+
+# Template endpoints
+@router.get("/templates", response_model=RequestTemplateList)
+def list_request_templates(
+    client_type: str | None = Query(None, description="Filter by client type"),
+    engagement_type: str | None = Query(None, description="Filter by engagement type"),
+    is_active: bool | None = Query(None, description="Filter by active status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> RequestTemplateList:
+    """List request templates with optional filters."""
+    stmt = select(RequestTemplate)
+    
+    if client_type:
+        stmt = stmt.where(RequestTemplate.client_type == client_type)
+    if engagement_type:
+        stmt = stmt.where(RequestTemplate.engagement_type == engagement_type)
+    if is_active is not None:
+        stmt = stmt.where(RequestTemplate.is_active == is_active)
+    
+    stmt = stmt.order_by(RequestTemplate.name).offset(skip).limit(limit)
+    
+    templates = list(db.scalars(stmt).all())
+    
+    # Get total count
+    count_stmt = select(RequestTemplate)
+    if client_type:
+        count_stmt = count_stmt.where(RequestTemplate.client_type == client_type)
+    if engagement_type:
+        count_stmt = count_stmt.where(RequestTemplate.engagement_type == engagement_type)
+    if is_active is not None:
+        count_stmt = count_stmt.where(RequestTemplate.is_active == is_active)
+    
+    total = db.scalar(select(func.count()).select_from(count_stmt.subquery())) or 0
+    
+    return RequestTemplateList(
+        items=[RequestTemplateResponse.model_validate(t) for t in templates],
+        total=total,
+    )
+
+
+@router.get("/templates/{template_id}", response_model=RequestTemplateResponse)
+def get_request_template(
+    template_id: int, db: Session = Depends(get_db)
+) -> RequestTemplateResponse:
+    """Get a request template by ID."""
+    template = db.get(RequestTemplate, template_id)
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+    return RequestTemplateResponse.model_validate(template)
+
+
+@router.post("/templates/{template_id}/create-set", response_model=RequestSetResponse, status_code=status.HTTP_201_CREATED)
+def create_request_set_from_template(
+    template_id: int,
+    data: CreateRequestSetFromTemplate,
+    db: Session = Depends(get_db),
+) -> RequestSetResponse:
+    """Create a RequestSet from a RequestTemplate."""
+    # Verify template exists
+    template = db.get(RequestTemplate, template_id)
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+    
+    # Verify engagement exists
+    engagement_service = EngagementService(db)
+    if not engagement_service.get(data.engagement_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found"
+        )
+    
+    # Create request set from template
+    service = RequestSetService(db)
+    try:
+        request_set = service.create_from_template(
+            engagement_id=data.engagement_id,
+            template_id=template_id,
+            name_override=data.name_override,
+        )
+        return RequestSetResponse.model_validate(request_set)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         )
