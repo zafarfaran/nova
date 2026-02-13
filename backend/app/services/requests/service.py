@@ -1,11 +1,13 @@
 """Service layer for Request Set and Request Item operations."""
 
+from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.request_set import RequestSet
-from app.models.request_item import RequestItem
-from app.schemas.request import (
+from app.models.requests.set import RequestSet, RequestSetStatus
+from app.models.requests.item import RequestItem, RequestItemStatus
+from app.models.requests.template import RequestTemplate, RequestTemplateItem
+from app.schemas.requests.request import (
     RequestSetCreate,
     RequestSetUpdate,
     RequestItemCreate,
@@ -73,6 +75,95 @@ class RequestSetService:
         self.db.delete(request_set)
         self.db.commit()
         return True
+
+    def create_from_template(
+        self,
+        engagement_id: int,
+        template_id: int,
+        name_override: str | None = None
+    ) -> RequestSet:
+        """Create a RequestSet from a RequestTemplate.
+        
+        Args:
+            engagement_id: ID of the engagement to create the request set for
+            template_id: ID of the template to use
+            name_override: Optional custom name (defaults to template name with period)
+            
+        Returns:
+            Created RequestSet with all items from template
+            
+        Raises:
+            ValueError: If engagement or template not found, or types don't match
+        """
+        from app.models.engagements.engagement import Engagement
+        
+        # Get engagement with client relationship
+        from sqlalchemy.orm import joinedload
+        engagement = self.db.query(Engagement).options(joinedload(Engagement.client)).filter(Engagement.id == engagement_id).first()
+        if not engagement:
+            raise ValueError(f"Engagement {engagement_id} not found")
+        
+        # Get template with items
+        template = self.db.get(RequestTemplate, template_id)
+        if not template:
+            raise ValueError(f"Template {template_id} not found")
+        
+        if not template.is_active:
+            raise ValueError(f"Template {template_id} is not active")
+        
+        # Validate client type and engagement type match
+        client_type = engagement.client.client_type if engagement.client else None
+        if template.client_type and template.client_type != client_type:
+            raise ValueError(
+                f"Template client_type '{template.client_type}' doesn't match "
+                f"client type '{client_type}'"
+            )
+        
+        if template.engagement_type and template.engagement_type != engagement.engagement_type.value:
+            raise ValueError(
+                f"Template engagement_type '{template.engagement_type}' doesn't match "
+                f"engagement type '{engagement.engagement_type.value}'"
+            )
+        
+        # Generate name
+        if name_override:
+            name = name_override
+        else:
+            period_start = engagement.period_start.strftime("%Y-%m-%d")
+            period_end = engagement.period_end.strftime("%Y-%m-%d")
+            name = f"{template.name} — VAT Period {period_start} to {period_end}"
+        
+        # Create request set
+        request_set = RequestSet(
+            engagement_id=engagement_id,
+            name=name,
+            status=RequestSetStatus.DRAFT,
+        )
+        self.db.add(request_set)
+        self.db.flush()
+        
+        # Create request items from template items (ordered by order_index)
+        template_items = sorted(template.items, key=lambda x: x.order_index)
+        
+        for template_item in template_items:
+            # Replace placeholders in description
+            description = template_item.description or ""
+            description = description.replace("[Q_START]", engagement.period_start.strftime("%Y-%m-%d"))
+            description = description.replace("[Q_END]", engagement.period_end.strftime("%Y-%m-%d"))
+            
+            request_item = RequestItem(
+                request_set_id=request_set.id,
+                document_type_id=template_item.document_type_id,
+                description=description,
+                expected_count=template_item.expected_count,
+                is_required=template_item.is_required,
+                status=RequestItemStatus.PENDING,
+            )
+            self.db.add(request_item)
+        
+        self.db.commit()
+        self.db.refresh(request_set)
+        return request_set
 
 
 class RequestItemService:
@@ -148,6 +239,8 @@ class RequestItemService:
         
         if document not in request_item.documents:
             request_item.documents.append(document)
+            # Update status after linking
+            self._update_item_status(request_item)
             self.db.commit()
         
         return True
@@ -164,6 +257,19 @@ class RequestItemService:
         
         if document in request_item.documents:
             request_item.documents.remove(document)
+            # Update status after unlinking
+            self._update_item_status(request_item)
             self.db.commit()
         
         return True
+
+    def _update_item_status(self, request_item: RequestItem) -> None:
+        """Update request item status based on document count."""
+        doc_count = len(request_item.documents)
+        
+        if doc_count == 0:
+            request_item.status = RequestItemStatus.PENDING
+        elif doc_count < request_item.expected_count:
+            request_item.status = RequestItemStatus.PARTIAL
+        else:
+            request_item.status = RequestItemStatus.COMPLETE

@@ -45,6 +45,23 @@ class TestCreateClient:
         response = client.post("/api/v1/clients", json=sample_client_data)
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
+    def test_create_client_with_sole_trader_type(self, client, db_session, sample_client_data):
+        """Test creating a client with sole_trader client_type."""
+        sample_client_data["client_type"] = "sole_trader"
+        response = client.post("/api/v1/clients", json=sample_client_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert data["client_type"] == "sole_trader"
+        assert "id" in data
+
+    def test_create_client_with_limited_company_type(self, client, db_session, sample_client_data):
+        """Test creating a client with limited_company client_type."""
+        sample_client_data["client_type"] = "limited_company"
+        response = client.post("/api/v1/clients", json=sample_client_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert data["client_type"] == "limited_company"
+
 
 class TestListClients:
     """Tests for GET /api/v1/clients"""
@@ -116,6 +133,20 @@ class TestGetClient:
 
 class TestUpdateClient:
     """Tests for PATCH /api/v1/clients/{client_id}"""
+
+    def test_update_client_client_type(self, client, db_session, sample_client_data):
+        """Test updating a client's client_type."""
+        # Create client
+        create_response = client.post("/api/v1/clients", json=sample_client_data)
+        assert create_response.status_code == status.HTTP_201_CREATED
+        client_id = create_response.json()["id"]
+        
+        # Update client_type
+        update_data = {"client_type": "sole_trader"}
+        response = client.patch(f"/api/v1/clients/{client_id}", json=update_data)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["client_type"] == "sole_trader"
 
     def test_update_client_success(self, client, db_session, sample_client_data):
         """Test updating a client."""

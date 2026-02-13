@@ -13,6 +13,7 @@ class ClientBase(BaseModel):
     name: str
     vat_number: str | None = None
     entity_type: EntityType = EntityType.LIMITED_COMPANY
+    client_type: str | None = None  # "sole_trader" or "limited_company"
     contact_email: EmailStr | None = None
     contact_name: str | None = None
     address: str | None = None
@@ -31,6 +32,7 @@ class ClientUpdate(BaseModel):
     name: str | None = None
     vat_number: str | None = None
     entity_type: EntityType | None = None
+    client_type: str | None = None  # "sole_trader" or "limited_company"
     contact_email: EmailStr | None = None
     contact_name: str | None = None
     address: str | None = None
