@@ -9,10 +9,18 @@ from typing import Any
 from app.core.metrics_config import should_log
 
 
-class JSONFormatter(logging.Formatter):
-    """JSON formatter for structured logging."""
+class SectionFilter(logging.Filter):
+    """Filter log records based on section-specific configuration."""
     
-    def format(self, record: logging.LogRecord) -> str:
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Filter log records based on section and level configuration.
+        
+        Args:
+            record: Log record to filter
+            
+        Returns:
+            True if the record should be logged, False otherwise
+        """
         # Determine section from logger name or module
         section = "unknown"
         if "document" in record.name.lower() or "extraction" in record.name.lower():
@@ -28,10 +36,19 @@ class JSONFormatter(logging.Formatter):
         elif "ai" in record.name.lower():
             section = "ai"
         
+        # Store section on the record for use by formatter
+        record.section = section
+        
         # Check if logging is enabled for this section and level
-        # If not enabled or level too low, return empty string (effectively filtering out the log)
-        if not should_log(section, record.levelno):
-            return ""
+        return should_log(section, record.levelno)
+
+
+class JSONFormatter(logging.Formatter):
+    """JSON formatter for structured logging."""
+    
+    def format(self, record: logging.LogRecord) -> str:
+        # Get section from record (set by SectionFilter)
+        section = getattr(record, "section", "unknown")
         
         # Format source location
         source = f"{record.module}:{record.funcName}"
@@ -74,6 +91,11 @@ def setup_structured_logging(debug: bool = False) -> None:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.DEBUG if debug else logging.INFO)
     console_handler.setFormatter(JSONFormatter())
+    
+    # Add section-based filter to handler
+    section_filter = SectionFilter()
+    console_handler.addFilter(section_filter)
+    
     root_logger.addHandler(console_handler)
     
     # Configure log levels
