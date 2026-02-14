@@ -131,7 +131,7 @@ def onboarding_complete(
             status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
         )
 
-    engagement_id = data.engagement_id if hasattr(data, 'engagement_id') else data.vat_period_id
+    engagement_id = data.engagement_id or data.vat_period_id
     if engagement_id is not None:
         engagement_service = EngagementService(db)
         engagement = engagement_service.get(engagement_id)
