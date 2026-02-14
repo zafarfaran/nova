@@ -266,10 +266,14 @@ class RequestItemService:
     def _update_item_status(self, request_item: RequestItem) -> None:
         """Update request item status based on document count."""
         doc_count = len(request_item.documents)
-        
+        # Normalize expected_count to avoid TypeError when it is None
+        expected_count = (
+            request_item.expected_count if request_item.expected_count is not None else 1
+        )
+
         if doc_count == 0:
             request_item.status = RequestItemStatus.PENDING
-        elif doc_count < request_item.expected_count:
+        elif doc_count < expected_count:
             request_item.status = RequestItemStatus.PARTIAL
         else:
             request_item.status = RequestItemStatus.COMPLETE
