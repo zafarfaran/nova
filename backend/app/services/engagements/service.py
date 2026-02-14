@@ -16,6 +16,9 @@ class EngagementService:
 
     def create(self, data: EngagementCreate) -> Engagement:
         """Create a new engagement."""
+        # The model's TypeDecorator handles enum value conversion automatically
+        # We can use model_dump() directly - the TypeDecorator will ensure
+        # enum values (not names) are stored in the database
         engagement = Engagement(**data.model_dump())
         self.db.add(engagement)
         self.db.commit()
@@ -54,6 +57,7 @@ class EngagementService:
         if engagement.is_locked:
             return None
 
+        # model_dump() with use_enum_values=True in config returns enum values as strings
         update_data = data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(engagement, field, value)

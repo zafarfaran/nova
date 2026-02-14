@@ -1,141 +1,50 @@
-import { db } from "~/server/db";
 import { auth } from "~/server/auth";
 import { AccountantDashboardClient } from "./DashboardClient";
 import type { ClientRow } from "./components/ClientTable";
 import type { DashboardMetrics } from "./components/QuickMetrics";
+import { listClients } from "~/domains/clients/api/client";
+import type { ClientResponse } from "~/domains/clients/types";
+import { logger } from "~/lib/utils/logger";
 
-// Server component that fetches data from the clients table
+// Server component that fetches data from the backend API
 export default async function AccountantDashboard() {
     // Get the current user session
     const session = await auth();
-    // Fetch all clients with their VAT periods, bank connections, checklist items, and validation status
-    const clients = await db.client.findMany({
-        include: {
-            vatPeriods: {
-                include: {
-                    evidenceItems: {
-                        include: {
-                            documents: {
-                                include: {
-                                    validationResults: {
-                                        where: {
-                                            OR: [
-                                                { status: "FAILED" },
-                                                { status: "WARNING" },
-                                            ],
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-                orderBy: { periodEnd: "desc" },
-                take: 1, // Get the most recent VAT period
-            },
-            bankConnections: {
-                where: { isActive: true },
-            },
-            checklistItems: true,
-        },
-        orderBy: { updatedAt: "desc" },
-    });
-
-    // Transform database data to ClientRow format
-    const clientRows: ClientRow[] = clients.map((client) => {
-        const latestPeriod = client.vatPeriods[0];
-
-        // Calculate document completion from checklist items
-        const requiredItems = client.checklistItems.filter((item) => item.required);
-        const uploadedItems = requiredItems.filter((item) => item.status === "uploaded");
-        let documentsUploaded = uploadedItems.length;
-        let documentsRequired = requiredItems.length;
-
-        // If no checklist items, fall back to evidence items from VAT period
-        if (documentsRequired === 0 && latestPeriod) {
-            for (const item of latestPeriod.evidenceItems) {
-                documentsRequired += item.expectedCount;
-                documentsUploaded += item.receivedCount;
-            }
-        }
-
-        // Calculate validation status from documents
-        const flaggedDocIds = new Set<number>();
-        const pendingReviewDocIds = new Set<number>();
-        const rejectedDocIds = new Set<number>();
-        const failedStatusDocIds = new Set<number>();
-
-        if (latestPeriod) {
-            for (const evidenceItem of latestPeriod.evidenceItems) {
-                for (const doc of evidenceItem.documents) {
-                    if (doc.status === "FAILED") {
-                        failedStatusDocIds.add(doc.id);
-                    }
-                    for (const result of doc.validationResults) {
-                        if (result.status === "FAILED" || result.status === "WARNING") {
-                            if (result.reviewAction !== "approve") {
-                                flaggedDocIds.add(doc.id);
-                            }
-                            if (!result.reviewAction || result.reviewAction === "request_info") {
-                                pendingReviewDocIds.add(doc.id);
-                            }
-                            if (result.reviewAction === "reject") {
-                                rejectedDocIds.add(doc.id);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        const failedValidationCount = new Set([
-            ...flaggedDocIds,
-            ...failedStatusDocIds,
-        ]).size;
-        const pendingReviewCount = pendingReviewDocIds.size;
-        const hasFailedValidations = rejectedDocIds.size > 0 || failedStatusDocIds.size > 0;
-        const hasPendingReviews = pendingReviewCount > 0;
-
-        // Determine status based on document completion
-        let status: "needs_attention" | "in_progress" | "complete" = "needs_attention";
-        if (documentsRequired > 0) {
-            const completionRate = documentsUploaded / documentsRequired;
-            if (completionRate >= 1) {
-                // If all docs uploaded but has validation issues, mark as needs_attention
-                status = hasPendingReviews ? "needs_attention" : "complete";
-            } else if (completionRate > 0) {
-                status = "in_progress";
-            }
-        } else if (latestPeriod) {
-            status = "in_progress";
-        }
-
-        // Generate VAT period label
-        const vatPeriodLabel = latestPeriod
-            ? `Q${Math.ceil((latestPeriod.periodStart.getMonth() + 1) / 3)} ${latestPeriod.periodStart.getFullYear()}`
-            : "No period";
-        const vatPeriodStatus = latestPeriod?.status ? latestPeriod.status.toLowerCase() : undefined;
-
-        return {
-            id: client.id.toString(),
-            clientName: client.name,
-            email: client.contactEmail || "",
-            entityType: client.entityType.toLowerCase(),
-            vatScheme: client.vatScheme || "standard",
-            vatPeriodLabel,
-            vatPeriodId: latestPeriod?.id,
-            vatPeriodStatus,
-            vatPeriodEnd: latestPeriod?.periodEnd || new Date(),
-            documentsUploaded,
-            documentsRequired,
-            hasBankConnection: client.bankConnections.length > 0,
-            status,
-            updatedAt: client.updatedAt,
-            hasFailedValidations,
-            hasPendingReviews,
-            failedValidationCount,
-        };
-    });
+    
+    // Fetch clients from backend API
+    let clientRows: ClientRow[] = [];
+    try {
+        const data = await listClients(0, 1000);
+        
+        // Transform backend API data to ClientRow format
+        // Note: Backend API currently returns basic client data only
+        // VAT periods, documents, and validation data will need separate API calls or enhanced endpoint
+        clientRows = data.items.map((client) => {
+            return {
+                id: client.id.toString(),
+                clientName: client.name,
+                email: client.contact_email || "",
+                entityType: client.entity_type.toLowerCase(),
+                vatScheme: client.vat_scheme || "standard",
+                vatPeriodLabel: "No period", // TODO: Fetch from separate endpoint
+                vatPeriodId: undefined,
+                vatPeriodStatus: undefined,
+                vatPeriodEnd: new Date(), // Default to current date
+                documentsUploaded: 0, // TODO: Fetch from separate endpoint
+                documentsRequired: 0, // TODO: Fetch from separate endpoint
+                hasBankConnection: false, // TODO: Fetch from separate endpoint
+                status: "needs_attention" as const, // Default status
+                updatedAt: new Date(client.updated_at),
+                hasFailedValidations: false, // TODO: Fetch from separate endpoint
+                hasPendingReviews: false, // TODO: Fetch from separate endpoint
+                failedValidationCount: 0, // TODO: Fetch from separate endpoint
+            };
+        });
+    } catch (error) {
+        logger.error("Failed to fetch clients for dashboard", error);
+        // Return empty array on error - client component will handle loading/error states
+        clientRows = [];
+    }
 
     // Calculate metrics
     const totalClients = clientRows.length;

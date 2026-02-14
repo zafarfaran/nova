@@ -16,9 +16,29 @@ class ClientService:
         self.db = db
 
     def create(self, data: ClientCreate) -> Client:
-        """Create a new client."""
-        client = Client(**data.model_dump())
+        """Create a new client and optionally create an engagement."""
+        from app.services.engagements import EngagementService
+        from app.schemas.engagements.engagement import EngagementCreate
+        
+        # Extract engagement data if provided
+        engagement_data = None
+        if data.engagement:
+            engagement_data = data.engagement
+        
+        # Create client without engagement field
+        client_dict = data.model_dump(exclude={'engagement'})
+        client = Client(**client_dict)
         self.db.add(client)
+        self.db.flush()  # Get client ID without committing
+        
+        # Create engagement if provided
+        if engagement_data:
+            engagement_service = EngagementService(self.db)
+            engagement_create = engagement_data.model_dump()
+            engagement_create['client_id'] = client.id
+            engagement = engagement_service.create(EngagementCreate(**engagement_create))
+            self.db.flush()
+        
         self.db.commit()
         self.db.refresh(client)
         return client

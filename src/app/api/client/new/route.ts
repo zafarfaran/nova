@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "~/server/db";
+import { createClient } from "~/domains/clients/api/client";
+import type { ClientCreatePayload } from "~/domains/clients/types";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // Zod schemas for validation
 const VatPeriodSchema = z.object({
@@ -67,44 +70,87 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const validatedData = WebhookPayloadSchema.parse(body);
 
-        // Create the client record
-        const client = await db.client.create({
-            data: {
-                name: validatedData.client_setup.client_name,
-                contactEmail: validatedData.client_setup.email,
-                entityType: mapEntityType(validatedData.client_setup.entity_type),
-                vatScheme: validatedData.client_setup.vat_scheme,
-                vatNumber: validatedData.client_setup.vat_number,
-                salesChannels: validatedData.client_setup.sales_channels || [],
-                notes: validatedData.client_setup.notes,
-                vatPeriods: {
-                    create: {
-                        periodStart: new Date(validatedData.client_setup.vat_period.start),
-                        periodEnd: new Date(validatedData.client_setup.vat_period.end),
-                        status: "DRAFT",
-                        isLocked: false,
-                    },
-                },
-                checklistItems: {
-                    create: validatedData.checklist.map((item) => ({
-                        itemId: item.id,
-                        title: item.title,
-                        required: item.required,
-                        status: item.status,
-                        acceptance: item.acceptance,
-                        ctaAction: item.cta.action,
-                        ctaData: JSON.stringify(item.cta),
-                    })),
-                },
-                autoChasers: {
-                    create: validatedData.auto_chasers.map((chaser) => ({
-                        trigger: chaser.trigger,
-                        delayDays: chaser.delay_days,
-                        message: chaser.message,
-                    })),
-                },
-            },
-        });
+        // Create client via backend API
+        const clientPayload: ClientCreatePayload = {
+            name: validatedData.client_setup.client_name,
+            contact_email: validatedData.client_setup.email,
+            entity_type: validatedData.client_setup.entity_type.toLowerCase() as any,
+            vat_scheme: validatedData.client_setup.vat_scheme as any,
+            vat_number: validatedData.client_setup.vat_number || null,
+            notes: validatedData.client_setup.notes || null,
+        };
+
+        const client = await createClient(clientPayload);
+
+        // Create engagement (VAT period) via backend API
+        let engagementId: number | null = null;
+        try {
+            const engagementResponse = await fetch(`${API_BASE_URL}/api/v1/engagements`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    client_id: client.id,
+                    engagement_type: "vat_return",
+                    period_start: validatedData.client_setup.vat_period.start,
+                    period_end: validatedData.client_setup.vat_period.end,
+                    status: "draft",
+                }),
+            });
+
+            if (engagementResponse.ok) {
+                const engagement = await engagementResponse.json();
+                engagementId = engagement.id;
+            }
+        } catch (error) {
+            console.error("Failed to create engagement:", error);
+            // Continue - client is created, engagement can be created later
+        }
+
+        // Create request set and items (checklist) via backend API
+        if (engagementId && validatedData.checklist.length > 0) {
+            try {
+                // Create request set
+                const requestSetResponse = await fetch(`${API_BASE_URL}/api/v1/requests/sets`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        engagement_id: engagementId,
+                        title: "Onboarding Checklist",
+                        description: "Initial onboarding checklist",
+                    }),
+                });
+
+                if (requestSetResponse.ok) {
+                    const requestSet = await requestSetResponse.json();
+                    
+                    // Create request items (checklist items)
+                    for (const item of validatedData.checklist) {
+                        try {
+                            await fetch(`${API_BASE_URL}/api/v1/requests/items`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    request_set_id: requestSet.id,
+                                    title: item.title,
+                                    description: item.cta.question || item.title,
+                                    is_required: item.required,
+                                    document_type: item.cta.upload_type || "other",
+                                    order_index: validatedData.checklist.indexOf(item),
+                                }),
+                            });
+                        } catch (error) {
+                            console.error(`Failed to create request item ${item.id}:`, error);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to create request set:", error);
+                // Continue - client is created, checklist can be created later
+            }
+        }
+
+        // Note: Auto chasers are not yet supported by backend API
+        // TODO: Implement auto chaser endpoints in backend or handle via engagement
 
         // Generate the onboarding link
         const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
@@ -117,7 +163,7 @@ export async function POST(request: NextRequest) {
                 data: {
                     client_id: client.id,
                     onboarding_link: onboardingLink,
-                    email: client.contactEmail,
+                    email: client.contact_email,
                     client_name: client.name,
                 },
             },

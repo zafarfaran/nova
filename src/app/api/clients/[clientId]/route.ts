@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "~/server/db";
+import { deleteClient } from "~/domains/clients/api/client";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function DELETE(
     request: NextRequest,
@@ -16,95 +18,24 @@ export async function DELETE(
             );
         }
 
-        const client = await db.client.findUnique({
-            where: { id: clientId },
-            select: { id: true },
-        });
-
-        if (!client) {
-            return NextResponse.json(
-                { success: false, error: "Client not found" },
-                { status: 404 }
-            );
+        // Delete client via backend API (backend handles cascading deletes)
+        try {
+            await deleteClient(clientId);
+            return NextResponse.json({ success: true });
+        } catch (error) {
+            // If deleteClient throws, it's already an ApiError with proper status
+            if (error instanceof Error) {
+                const statusCode = "statusCode" in error ? (error.statusCode as number) : 500;
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: error.message,
+                    },
+                    { status: statusCode }
+                );
+            }
+            throw error;
         }
-
-        await db.$transaction(async (tx) => {
-            await tx.validationResult.deleteMany({
-                where: {
-                    document: {
-                        evidenceItem: {
-                            vatPeriod: { clientId },
-                        },
-                    },
-                },
-            });
-
-            await tx.document.deleteMany({
-                where: {
-                    evidenceItem: {
-                        vatPeriod: { clientId },
-                    },
-                },
-            });
-
-            await tx.evidenceItem.deleteMany({
-                where: {
-                    vatPeriod: { clientId },
-                },
-            });
-
-            await tx.auditTrailEntry.deleteMany({
-                where: {
-                    vatPeriod: { clientId },
-                },
-            });
-
-            await tx.chaserResponse.deleteMany({
-                where: {
-                    chaserRequest: {
-                        vatPeriod: { clientId },
-                    },
-                },
-            });
-
-            await tx.chaserRequest.deleteMany({
-                where: {
-                    vatPeriod: { clientId },
-                },
-            });
-
-            await tx.vATPeriod.deleteMany({
-                where: { clientId },
-            });
-
-            await tx.chatMessage.deleteMany({
-                where: {
-                    session: { clientId },
-                },
-            });
-
-            await tx.chatSession.deleteMany({
-                where: { clientId },
-            });
-
-            await tx.bankConnection.deleteMany({
-                where: { clientId },
-            });
-
-            await tx.autoChaser.deleteMany({
-                where: { clientId },
-            });
-
-            await tx.checklistItem.deleteMany({
-                where: { clientId },
-            });
-
-            await tx.client.delete({
-                where: { id: clientId },
-            });
-        });
-
-        return NextResponse.json({ success: true });
     } catch (error) {
         console.error("Error deleting client:", error);
         return NextResponse.json(

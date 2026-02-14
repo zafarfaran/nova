@@ -1,0 +1,10 @@
+{
+  "name": "Acme Corporation Ltd",
+  "contact_email": "contact@acmecorp.com",
+  "vat_number": "GB123456789",
+  "entity_type": "limited_company",
+  "client_type": "limited_company",
+  "contact_name": "John Smith",
+  "address": "123 Business Street, London, UK",
+  "notes": "New client for VAT services"
+}
