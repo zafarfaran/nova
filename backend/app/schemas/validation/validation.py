@@ -38,9 +38,9 @@ class ValidationResultList(BaseModel):
 
 
 class ValidationSummary(BaseModel):
-    """Summary of validation for a VAT period."""
+    """Summary of validation for an engagement."""
 
-    vat_period_id: int
+    engagement_id: int
     total_documents: int
     validated_documents: int
     failed_documents: int
