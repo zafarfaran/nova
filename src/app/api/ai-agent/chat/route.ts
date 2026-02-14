@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 import { db } from "~/server/db";
-import { clientsApi, vatPeriodsApi } from "~/lib/api/client";
 
 const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -139,23 +138,26 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
 
         case "search_clients":
             try {
-                // Search clients database
-                const clients = await db.client.findMany({
-                    where: {
-                        OR: [
-                            { name: { contains: toolInput.query, mode: "insensitive" } },
-                            { contactEmail: { contains: toolInput.query, mode: "insensitive" } },
-                        ],
-                    },
-                    take: 10,
-                    select: {
-                        id: true,
-                        name: true,
-                        contactEmail: true,
-                        entityType: true,
-                        vatScheme: true,
-                    },
+                // Search clients via backend API
+                const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const response = await fetch(`${API_BASE_URL}/api/v1/clients?skip=0&limit=100`, {
+                    headers: { "Content-Type": "application/json" },
                 });
+
+                if (!response.ok) {
+                    return `Error fetching clients: ${response.status}`;
+                }
+
+                const data = await response.json();
+                const allClients = data.items || [];
+
+                // Filter clients by query (case-insensitive)
+                const queryLower = toolInput.query.toLowerCase();
+                const clients = allClients.filter(
+                    (c: any) =>
+                        c.name?.toLowerCase().includes(queryLower) ||
+                        c.contact_email?.toLowerCase().includes(queryLower)
+                ).slice(0, 10);
 
                 if (clients.length === 0) {
                     return `No clients found matching "${toolInput.query}"`;
@@ -163,8 +165,8 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
 
                 return `Found ${clients.length} client(s):\n${clients
                     .map(
-                        (c: { id: number; name: string; contactEmail: string | null; entityType: string; vatScheme: string | null }) =>
-                            `- ${c.name} (${c.contactEmail || "no email"}) - ${c.entityType}, ${c.vatScheme || "N/A"} [ID: ${c.id}]`
+                        (c: any) =>
+                            `- ${c.name} (${c.contact_email || "no email"}) - ${c.entity_type}, ${c.vat_scheme || "N/A"} [ID: ${c.id}]`
                     )
                     .join("\n")}`;
             } catch (error) {
@@ -178,30 +180,50 @@ async function executeTool(toolName: string, toolInput: any): Promise<string> {
                     return `Invalid client ID: ${toolInput.clientId}`;
                 }
 
-                // Look up client with tax periods
-                const client = await db.client.findUnique({
-                    where: { id: clientId },
-                    include: {
-                        vatPeriods: {
-                            orderBy: { periodEnd: "desc" },
-                            take: 5,
-                        },
-                    },
+                // Look up client via backend API
+                const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const clientResponse = await fetch(`${API_BASE_URL}/api/v1/clients/${clientId}`, {
+                    headers: { "Content-Type": "application/json" },
                 });
+
+                if (!clientResponse.ok) {
+                    return `Client not found: ${clientId}`;
+                }
+
+                const client = await clientResponse.json();
+
+                // Fetch engagements (VAT periods) for this client
+                let vatPeriods: any[] = [];
+                try {
+                    const engagementsResponse = await fetch(
+                        `${API_BASE_URL}/api/v1/engagements?client_id=${clientId}`,
+                        { headers: { "Content-Type": "application/json" } }
+                    );
+                    if (engagementsResponse.ok) {
+                        const engagementsData = await engagementsResponse.json();
+                        vatPeriods = (engagementsData.items || [])
+                            .sort((a: any, b: any) => 
+                                new Date(b.period_end).getTime() - new Date(a.period_end).getTime()
+                            )
+                            .slice(0, 5);
+                    }
+                } catch (error) {
+                    console.error("Error fetching engagements:", error);
+                }
 
                 if (!client) {
                     return `Client not found with ID: ${clientId}`;
                 }
 
                 let result = `Tax Information for ${client.name}:
-- Tax Scheme: ${client.vatScheme || "Not set"}
-- Tax Number: ${client.vatNumber || "Not set"}`;
+- Tax Scheme: ${client.vat_scheme || "Not set"}
+- Tax Number: ${client.vat_number || "Not set"}`;
 
-                if (client.vatPeriods.length > 0) {
-                    result += `\n\nTax Periods (${client.vatPeriods.length} shown):\n${client.vatPeriods
+                if (vatPeriods.length > 0) {
+                    result += `\n\nTax Periods (${vatPeriods.length} shown):\n${vatPeriods
                         .map(
-                            (p: { periodStart: Date; periodEnd: Date; status: string; dueDate: Date | null }) =>
-                                `- ${new Date(p.periodStart).toLocaleDateString()} - ${new Date(p.periodEnd).toLocaleDateString()}: ${p.status}${p.dueDate ? ` (Due: ${new Date(p.dueDate).toLocaleDateString()})` : ""}`
+                            (p: any) =>
+                                `- ${new Date(p.period_start).toLocaleDateString()} - ${new Date(p.period_end).toLocaleDateString()}: ${p.status || "draft"}`
                         )
                         .join("\n")}`;
                 } else {

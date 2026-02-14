@@ -1,10 +1,23 @@
 """Pydantic schemas for Client."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.models.clients import EntityType
+from app.models.engagements import EngagementStatus, EngagementType
+
+
+class EngagementCreateData(BaseModel):
+    """Optional engagement data to create when creating a client."""
+
+    engagement_type: EngagementType = EngagementType.VAT_RETURN
+    period_start: date
+    period_end: date
+    status: EngagementStatus = EngagementStatus.DRAFT
+    reference: str | None = None
+    due_date: date | None = None
+    notes: str | None = None
 
 
 class ClientBase(BaseModel):
@@ -18,12 +31,13 @@ class ClientBase(BaseModel):
     contact_name: str | None = None
     address: str | None = None
     notes: str | None = None
+    vat_scheme: str | None = None  # "standard", "flat_rate", "cash_accounting", "annual_accounting"
 
 
 class ClientCreate(ClientBase):
     """Schema for creating a Client."""
 
-    pass
+    engagement: EngagementCreateData | None = None
 
 
 class ClientUpdate(BaseModel):
@@ -37,6 +51,7 @@ class ClientUpdate(BaseModel):
     contact_name: str | None = None
     address: str | None = None
     notes: str | None = None
+    vat_scheme: str | None = None  # "standard", "flat_rate", "cash_accounting", "annual_accounting"
 
 
 class ClientResponse(ClientBase):

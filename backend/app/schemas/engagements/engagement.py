@@ -10,6 +10,8 @@ from app.models.engagements import EngagementStatus, EngagementType
 class EngagementBase(BaseModel):
     """Base schema for Engagement."""
 
+    model_config = ConfigDict(use_enum_values=True)
+
     engagement_type: EngagementType = EngagementType.VAT_RETURN
     period_start: date
     period_end: date
@@ -28,6 +30,8 @@ class EngagementCreate(EngagementBase):
 class EngagementUpdate(BaseModel):
     """Schema for updating an Engagement."""
 
+    model_config = ConfigDict(use_enum_values=True)
+
     engagement_type: EngagementType | None = None
     period_start: date | None = None
     period_end: date | None = None
@@ -41,7 +45,7 @@ class EngagementUpdate(BaseModel):
 class EngagementResponse(EngagementBase):
     """Schema for Engagement response."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     id: int
     client_id: int

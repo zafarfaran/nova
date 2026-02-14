@@ -25,7 +25,11 @@ logger = logging.getLogger(__name__)
 
 @router.post("", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
 def create_client(data: ClientCreate, db: Session = Depends(get_db)) -> ClientResponse:
-    """Create a new client."""
+    """Create a new client and optionally create an engagement.
+    
+    If engagement data is provided, an engagement will be created automatically
+    for the new client.
+    """
     service = ClientService(db)
     if data.vat_number:
         existing = service.get_by_vat_number(data.vat_number)

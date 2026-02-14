@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { ChecklistItem as ChecklistItemType } from "@prisma/client";
-import { ChecklistItem } from "./ChecklistItem";
+import type { RequestItem } from "~/domains/requests/types";
+import { RequestItem as RequestItemComponent } from "./RequestItem";
 
 interface ChecklistSectionProps {
     title: string;
     subtitle: string;
     icon: "document" | "check";
-    items: ChecklistItemType[];
+    items: RequestItem[];
     clientId: number;
     accentColor: string;
-    onItemUpdate: (itemId: number, payload: Partial<ChecklistItemType>) => void;
+    onItemUpdate: (itemId: number, payload: Partial<RequestItem>) => void;
 }
 
 export function ChecklistSection({
@@ -26,7 +26,7 @@ export function ChecklistSection({
     const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
     const completedCount = items.filter(
-        (item) => item.status === "uploaded" || item.status === "confirmed" || item.status === "not_applicable"
+        (item) => item.status === "partial" || item.status === "complete" || item.status === "waived"
     ).length;
 
     const toggleExpand = (itemId: number) => {
@@ -87,7 +87,7 @@ export function ChecklistSection({
             {/* Items List */}
             <div className="divide-y divide-[#EBECF0]">
                 {items.map((item) => (
-                    <ChecklistItem
+                    <RequestItemComponent
                         key={item.id}
                         item={item}
                         clientId={clientId}

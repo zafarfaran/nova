@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { UploadButton } from "~/utils/uploadthing";
-import type { ChecklistItem as ChecklistItemType } from "@prisma/client";
+import type { RequestItem } from "~/domains/requests/types";
+import { updateRequestItem } from "~/domains/requests/api/request";
 
-interface ChecklistItemProps {
-    item: ChecklistItemType;
+interface RequestItemProps {
+    item: RequestItem;
     clientId: number;
     isExpanded: boolean;
     onToggleExpand: () => void;
-    onItemUpdate: (itemId: number, payload: Partial<ChecklistItemType>) => void;
+    onItemUpdate: (itemId: number, payload: Partial<RequestItem>) => void;
 }
 
 // Document type configuration
@@ -35,20 +36,22 @@ function inferDocumentType(title: string): keyof typeof DOCUMENT_TYPES {
     return "other";
 }
 
+import { logger } from "~/lib/utils/logger";
+
 // Sync uploaded document to backend
 async function syncDocumentToBackend(
     clientId: number,
-    checklistItemId: number,
+    requestItemId: number,
     file: { url: string; name: string; size: number; type?: string },
     documentType: string
-) {
+): Promise<{ success: boolean; error?: string }> {
     try {
         const response = await fetch("/api/sync-document", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 clientId,
-                checklistItemId,
+                checklistItemId: requestItemId, // API still uses checklistItemId
                 filename: file.name,
                 fileUrl: file.url,
                 fileSize: file.size,
@@ -57,69 +60,77 @@ async function syncDocumentToBackend(
             }),
         });
 
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            logger.warn("Document sync failed", {
+                clientId,
+                requestItemId,
+                status: response.status,
+                error: errorData,
+            });
+            return { success: false, error: errorData.error || "Sync failed" };
+        }
+
         const result = await response.json();
         if (!result.success) {
-            console.warn("Document sync warning:", result.error);
+            logger.warn("Document sync warning", {
+                clientId,
+                requestItemId,
+                error: result.error,
+            });
         }
-        return result;
+        return { success: true };
     } catch (error) {
-        console.error("Document sync error:", error);
-        return { success: false, error: String(error) };
+        logger.error("Document sync error", error, {
+            clientId,
+            requestItemId,
+        });
+        return { 
+            success: false, 
+            error: error instanceof Error ? error.message : "Unknown error" 
+        };
     }
 }
 
-export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onItemUpdate }: ChecklistItemProps) {
+export function RequestItem({ item, clientId, isExpanded, onToggleExpand, onItemUpdate }: RequestItemProps) {
     const [isUpdating, setIsUpdating] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
 
-    const ctaData = JSON.parse(item.ctaData || "{}");
-    const documentType = inferDocumentType(item.title);
+    // Use description as title (backend RequestItem uses description field)
+    const title = item.description || "Document Request";
+    const documentType = inferDocumentType(title);
     const docTypeConfig = DOCUMENT_TYPES[documentType];
     const status = item.status;
-    const fileUrl = item.uploadedFileUrl;
 
-    const isCompleted = status === "uploaded" || status === "confirmed" || status === "not_applicable";
-    const isUploadType = item.ctaAction === "request_upload";
+    const isCompleted = status === "partial" || status === "complete" || status === "waived";
 
-    const applyChecklistUpdate = async (payload: Partial<ChecklistItemType>) => {
+    const applyRequestItemUpdate = async (payload: Partial<RequestItem>) => {
         try {
-            const response = await fetch(`/api/checklist/${item.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+            setIsUpdating(true);
+            // Update via backend API
+            const updated = await updateRequestItem(item.id, {
+                status: payload.status || undefined,
             });
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                console.error("Checklist update failed:", error);
-                return false;
-            }
-
-            const result = await response.json();
-            if (result?.data) {
-                onItemUpdate(item.id, result.data);
-            } else {
-                onItemUpdate(item.id, payload);
-            }
+            onItemUpdate(item.id, updated);
             return true;
         } catch (error) {
-            console.error("Error updating checklist item:", error);
+            logger.error("Failed to update request item", error, {
+                requestItemId: item.id,
+                payload,
+            });
             return false;
+        } finally {
+            setIsUpdating(false);
         }
     };
 
-    const handleConfirmation = async (confirmed: boolean) => {
-        setIsUpdating(true);
-        const nextStatus = confirmed ? "confirmed" : "not_applicable";
-        await applyChecklistUpdate({ status: nextStatus });
-        setIsUpdating(false);
+    const handleMarkComplete = async () => {
+        await applyRequestItemUpdate({ status: "complete" });
     };
 
-    const handleReplaceFile = async () => {
-        setIsUpdating(true);
-        await applyChecklistUpdate({ status: "missing", uploadedFileUrl: null });
-        setIsUpdating(false);
+    const handleMarkWaived = async () => {
+        await applyRequestItemUpdate({ status: "waived" });
     };
 
     return (
@@ -144,21 +155,19 @@ export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onIt
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                         <span className={`text-[12px] font-medium ${isCompleted ? "text-[#5E6C84] line-through" : "text-[#172B4D]"}`}>
-                            {item.title}
+                            {title}
                         </span>
-                        {item.required && (
+                        {item.is_required && (
                             <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold text-[#DE350B] bg-[#FFEBE6]">
                                 REQUIRED
                             </span>
                         )}
-                        {isUploadType && (
-                            <span
-                                className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium"
-                                style={{ color: docTypeConfig.color, backgroundColor: docTypeConfig.bgColor }}
-                            >
-                                {docTypeConfig.label}
-                            </span>
-                        )}
+                        <span
+                            className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium"
+                            style={{ color: docTypeConfig.color, backgroundColor: docTypeConfig.bgColor }}
+                        >
+                            {docTypeConfig.label}
+                        </span>
                     </div>
                 </div>
 
@@ -179,29 +188,25 @@ export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onIt
             {/* Expanded Content */}
             {isExpanded && (
                 <div className="border-t border-[#EBECF0] bg-[#FAFBFC] px-4 py-4">
-                    {/* Acceptance Criteria */}
-                    <p className="mb-4 text-[11px] text-[#5E6C84]">
-                        <span className="font-medium text-[#172B4D]">Acceptance:</span> {item.acceptance}
-                    </p>
+                    {/* Description */}
+                    {item.description && (
+                        <p className="mb-4 text-[11px] text-[#5E6C84]">
+                            <span className="font-medium text-[#172B4D]">Description:</span> {item.description}
+                        </p>
+                    )}
 
                     {/* Upload Section */}
-                    {isUploadType && (
+                    {status !== "complete" && status !== "waived" && (
                         <div>
-                            {fileUrl ? (
+                            {status === "partial" ? (
                                 <div className="flex items-center justify-between rounded-lg bg-[#E3FCEF] p-3 ring-1 ring-[#ABF5D1]">
                                     <div className="flex items-center gap-2">
                                         <svg className="h-4 w-4 text-[#006644]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
-                                        <a
-                                            href={fileUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-[11px] font-medium text-[#006644] hover:underline"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            View uploaded document
-                                        </a>
+                                        <span className="text-[11px] font-medium text-[#006644]">
+                                            Document uploaded
+                                        </span>
                                         {isSyncing && (
                                             <span className="text-[10px] text-[#5E6C84]">(Syncing...)</span>
                                         )}
@@ -209,11 +214,12 @@ export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onIt
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleReplaceFile();
+                                            handleMarkComplete();
                                         }}
-                                        className="text-[10px] font-medium text-[#5E6C84] hover:text-[#172B4D]"
+                                        disabled={isUpdating}
+                                        className="text-[10px] font-medium text-[#006644] hover:text-[#0052CC] disabled:opacity-50"
                                     >
-                                        Replace
+                                        Mark Complete
                                     </button>
                                 </div>
                             ) : (
@@ -246,10 +252,8 @@ export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onIt
                                                 setUploadProgress(0);
                                                 if (res && res[0]) {
                                                     const uploadedFile = res[0];
-                                                    onItemUpdate(item.id, {
-                                                        status: "uploaded",
-                                                        uploadedFileUrl: uploadedFile.url,
-                                                    });
+                                                    // Backend will auto-update status to "partial" or "complete"
+                                                    // based on document count, so we don't need to manually update
 
                                                     // Sync to backend with document type
                                                     setIsSyncing(true);
@@ -269,7 +273,10 @@ export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onIt
                                             }}
                                             onUploadError={(error: Error) => {
                                                 setUploadProgress(0);
-                                                console.error("Upload error:", error);
+                                                logger.error("File upload failed", error, {
+                                                    clientId,
+                                                    requestItemId: item.id,
+                                                });
                                                 alert(`Upload failed: ${error.message}`);
                                             }}
                                             appearance={{
@@ -286,46 +293,22 @@ export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onIt
                         </div>
                     )}
 
-                    {/* Confirmation Section */}
-                    {item.ctaAction === "ask_confirm" && ctaData.question && (
-                        <div>
-                            <p className="mb-3 text-[11px] font-medium text-[#172B4D]">{ctaData.question}</p>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleConfirmation(true);
-                                    }}
-                                    disabled={isUpdating || status === "confirmed"}
-                                    className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                                        status === "confirmed"
-                                            ? "bg-[#E3FCEF] text-[#006644] ring-1 ring-[#ABF5D1]"
-                                            : "bg-[#36B37E] text-white hover:bg-[#2D9B6B]"
-                                    } disabled:opacity-50`}
-                                >
-                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    Yes
-                                </button>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleConfirmation(false);
-                                    }}
-                                    disabled={isUpdating || status === "not_applicable"}
-                                    className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                                        status === "not_applicable"
-                                            ? "bg-[#F4F5F7] text-[#5E6C84] ring-1 ring-[#DFE1E6]"
-                                            : "bg-[#DFE1E6] text-[#172B4D] hover:bg-[#C1C7D0]"
-                                    } disabled:opacity-50`}
-                                >
-                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                    No / N/A
-                                </button>
-                            </div>
+                    {/* Actions */}
+                    {status === "pending" && (
+                        <div className="mt-4 flex gap-2">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMarkWaived();
+                                }}
+                                disabled={isUpdating}
+                                className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-medium transition-colors bg-[#DFE1E6] text-[#172B4D] hover:bg-[#C1C7D0] disabled:opacity-50"
+                            >
+                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                Mark as Not Applicable
+                            </button>
                         </div>
                     )}
                 </div>
@@ -336,15 +319,13 @@ export function ChecklistItem({ item, clientId, isExpanded, onToggleExpand, onIt
 
 function StatusBadge({ status }: { status: string }) {
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-        missing: { bg: "bg-[#FFFAE6]", text: "text-[#974F0C]", label: "Pending" },
-        uploaded: { bg: "bg-[#E3FCEF]", text: "text-[#006644]", label: "Uploaded" },
-        confirmed: { bg: "bg-[#E3FCEF]", text: "text-[#006644]", label: "Confirmed" },
-        not_applicable: { bg: "bg-[#F4F5F7]", text: "text-[#5E6C84]", label: "N/A" },
         pending: { bg: "bg-[#DEEBFF]", text: "text-[#0747A6]", label: "Pending" },
-        unknown: { bg: "bg-[#F4F5F7]", text: "text-[#5E6C84]", label: "Unknown" },
+        partial: { bg: "bg-[#E3FCEF]", text: "text-[#006644]", label: "Partial" },
+        complete: { bg: "bg-[#E3FCEF]", text: "text-[#006644]", label: "Complete" },
+        waived: { bg: "bg-[#F4F5F7]", text: "text-[#5E6C84]", label: "Waived" },
     };
 
-    const config = statusConfig[status] ?? statusConfig.unknown ?? { bg: "bg-[#F4F5F7]", text: "text-[#5E6C84]", label: "Unknown" };
+    const config = statusConfig[status] ?? { bg: "bg-[#F4F5F7]", text: "text-[#5E6C84]", label: status };
 
     return (
         <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium ${config.bg} ${config.text}`}>
