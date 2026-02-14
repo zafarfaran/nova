@@ -97,26 +97,73 @@ class RequestTrackingMiddleware(BaseHTTPMiddleware):
                         source=source,
                     ).observe(request_size)
                 
-                # Get response size
-                response_body = b""
-                async for chunk in response.body_iterator:
-                    response_body += chunk
+                # Get response size - prefer Content-Length header, avoid buffering streaming responses
+                response_size = 0
+                content_length = response.headers.get("content-length")
                 
-                if response_body:
-                    response_size_bytes.labels(
-                        method=method,
-                        endpoint=endpoint,
-                        section=section,
-                        source=source,
-                    ).observe(len(response_body))
-                
-                # Recreate response with body
-                return Response(
-                    content=response_body,
-                    status_code=status_code,
-                    headers=dict(response.headers),
-                    media_type=response.media_type,
+                # Check if this is a streaming response
+                is_streaming = (
+                    response.headers.get("transfer-encoding") == "chunked"
+                    or "text/event-stream" in (response.media_type or "")
+                    or status_code in (206, 304)  # Partial content, Not Modified
                 )
+                
+                if content_length:
+                    # Use Content-Length header if available (no need to read body)
+                    try:
+                        response_size = int(content_length)
+                        response_size_bytes.labels(
+                            method=method,
+                            endpoint=endpoint,
+                            section=section,
+                            source=source,
+                        ).observe(response_size)
+                    except (ValueError, TypeError):
+                        pass
+                    # Return original response without consuming body
+                    return response
+                elif is_streaming:
+                    # Skip size measurement for streaming responses
+                    # Return original response without consuming body
+                    return response
+                else:
+                    # Only buffer small, non-streaming responses for size measurement
+                    # Limit to reasonable size to avoid memory issues (e.g., 1MB)
+                    MAX_BODY_SIZE_FOR_MEASUREMENT = 1024 * 1024  # 1MB
+                    response_body = b""
+                    body_collected = False
+                    try:
+                        async for chunk in response.body_iterator:
+                            response_body += chunk
+                            if len(response_body) > MAX_BODY_SIZE_FOR_MEASUREMENT:
+                                # Stop collecting if too large, return original response
+                                body_collected = False
+                                break
+                        else:
+                            # Completed iteration - got full body
+                            body_collected = True
+                            response_size = len(response_body)
+                    except Exception:
+                        # If body collection fails, return original response
+                        body_collected = False
+                    
+                    if body_collected and response_body:
+                        # Record size and return rebuilt response
+                        response_size_bytes.labels(
+                            method=method,
+                            endpoint=endpoint,
+                            section=section,
+                            source=source,
+                        ).observe(response_size)
+                        return Response(
+                            content=response_body,
+                            status_code=status_code,
+                            headers=dict(response.headers),
+                            media_type=response.media_type,
+                        )
+                    else:
+                        # Return original response (too large or collection failed)
+                        return response
                 
             except Exception as e:
                 duration = time.time() - start_time
