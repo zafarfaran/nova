@@ -51,10 +51,19 @@ class RequestTrackingMiddleware(BaseHTTPMiddleware):
         # Track active requests
         active_requests.inc()
         
-        # Get request size (approximate)
+        # Get request size - prefer Content-Length header (no body reading needed)
         request_size = 0
-        if hasattr(request, "_body"):
-            request_size = len(request._body) if request._body else 0
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                request_size = int(content_length)
+            except (ValueError, TypeError):
+                request_size = 0
+        # Note: We don't read request.body() here because:
+        # 1. It would load the entire body into memory
+        # 2. We'd need to re-inject it for downstream handlers
+        # 3. For large uploads, this would be expensive
+        # If Content-Length is missing, request_size will be 0 (acceptable for metrics)
         
         start_time = time.time()
         
