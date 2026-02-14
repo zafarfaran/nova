@@ -93,7 +93,7 @@ class TestGetValidationSummary:
         response = client.get(f"/api/v1/validation/summary/{engagement_id}")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert "vat_period_id" in data
+        assert "engagement_id" in data
         assert "total_documents" in data
         assert "validated_documents" in data
         assert "failed_documents" in data

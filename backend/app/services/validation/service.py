@@ -1849,7 +1849,7 @@ class ValidationService:
         warnings = sum(1 for r in all_results if r.status == ValidationStatus.WARNING)
 
         return {
-            "vat_period_id": engagement_id,  # Schema uses vat_period_id for backwards compatibility
+            "engagement_id": engagement_id,
             "total_documents": total_docs,
             "validated_documents": validated_docs,
             "failed_documents": failed_docs,
