@@ -1,29 +1,29 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { ChecklistItem } from "@prisma/client";
+import type { RequestItem } from "~/domains/requests/types";
 
 interface SubmitButtonProps {
     clientId: number;
-    checklistItems: ChecklistItem[];
+    requestItems: RequestItem[];
     progress: number;
 }
 
-export function SubmitButton({ clientId, checklistItems, progress }: SubmitButtonProps) {
+export function SubmitButton({ clientId, requestItems, progress }: SubmitButtonProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);
 
     // Calculate completion stats
     const stats = useMemo(() => {
-        const required = checklistItems.filter((item) => item.required);
-        const optional = checklistItems.filter((item) => !item.required);
+        const required = requestItems.filter((item) => item.is_required);
+        const optional = requestItems.filter((item) => !item.is_required);
 
         const requiredComplete = required.filter(
-            (item) => item.status === "uploaded" || item.status === "confirmed" || item.status === "not_applicable"
+            (item) => item.status === "partial" || item.status === "complete" || item.status === "waived"
         ).length;
 
         const optionalComplete = optional.filter(
-            (item) => item.status === "uploaded" || item.status === "confirmed" || item.status === "not_applicable"
+            (item) => item.status === "partial" || item.status === "complete" || item.status === "waived"
         ).length;
 
         return {
@@ -33,7 +33,7 @@ export function SubmitButton({ clientId, checklistItems, progress }: SubmitButto
             optionalComplete,
             allRequiredComplete: requiredComplete === required.length,
         };
-    }, [checklistItems]);
+    }, [requestItems]);
 
     const handleSubmit = async () => {
         if (!stats.allRequiredComplete) {

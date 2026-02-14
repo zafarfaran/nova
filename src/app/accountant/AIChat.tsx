@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ClientFlowDiagram, getClientStage } from "./components/ClientFlowDiagram";
+import { CreateClientForm } from "~/domains/clients/components";
 import type { FlowStage } from "./components/ClientFlowDiagram";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -327,110 +328,6 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
         lastMessage.role === "assistant" &&
         lastMessage.content === "";
 
-    const CreateClientFormCard = ({ onSubmit, onCancel }: { onSubmit: (payload: string) => void; onCancel: () => void }) => {
-        const [name, setName] = useState("");
-        const [email, setEmail] = useState("");
-        const [entityType, setEntityType] = useState("limited_company");
-        const [vatScheme, setVatScheme] = useState("standard");
-        const [vatNumber, setVatNumber] = useState("");
-        const [notes, setNotes] = useState("");
-
-        const handleSubmit = () => {
-            if (!name.trim() || !email.trim()) return;
-            const message = [
-                "Please create a new client with the following details:",
-                `Name: ${name}`,
-                `Email: ${email}`,
-                `Entity type: ${entityType}`,
-                `Tax scheme: ${vatScheme}`,
-                vatNumber ? `Tax number: ${vatNumber}` : null,
-                notes ? `Notes: ${notes}` : null,
-            ]
-                .filter(Boolean)
-                .join("\n");
-
-            onSubmit(message);
-        };
-
-        return (
-            <div className="rounded-lg border border-[#C0B6F2] bg-gradient-to-br from-[#F4F5F7] to-[#EAE6FF] p-4">
-                <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[14px]">✨</span>
-                    <div>
-                        <p className="text-[13px] font-semibold text-[#403294]">New Client Capsule</p>
-                        <p className="text-[11px] text-[#5E6C84]">Drop the details and I’ll handle the rest.</p>
-                    </div>
-                </div>
-                <div className="grid gap-2">
-                    <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Client name"
-                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
-                    />
-                    <input
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="Email"
-                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                        <select
-                            value={entityType}
-                            onChange={(e) => setEntityType(e.target.value)}
-                            className="rounded border border-[#DFE1E6] bg-white px-2 py-2 text-[12px] text-[#172B4D]"
-                        >
-                            <option value="sole_trader">Sole Trader</option>
-                            <option value="partnership">Partnership</option>
-                            <option value="llp">LLP</option>
-                            <option value="limited_company">Limited Company</option>
-                            <option value="plc">PLC</option>
-                            <option value="charity">Charity</option>
-                            <option value="other">Other</option>
-                        </select>
-                        <select
-                            value={vatScheme}
-                            onChange={(e) => setVatScheme(e.target.value)}
-                            className="rounded border border-[#DFE1E6] bg-white px-2 py-2 text-[12px] text-[#172B4D]"
-                        >
-                            <option value="standard">Standard</option>
-                            <option value="flat_rate">Flat Rate</option>
-                            <option value="cash_accounting">Cash Accounting</option>
-                            <option value="annual_accounting">Annual Accounting</option>
-                        </select>
-                    </div>
-                    <input
-                        value={vatNumber}
-                        onChange={(e) => setVatNumber(e.target.value)}
-                        placeholder="Tax number (optional)"
-                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
-                    />
-                    <textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Notes (optional)"
-                        className="w-full rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D]"
-                        rows={2}
-                    />
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleSubmit}
-                            disabled={!name.trim() || !email.trim() || isLoading}
-                            className="rounded bg-[#6554C0] px-3 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
-                        >
-                            Create client
-                        </button>
-                        <button
-                            onClick={onCancel}
-                            className="rounded border border-[#DFE1E6] px-3 py-2 text-[12px] text-[#5E6C84]"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    };
 
     const ToolCard = ({ children }: { children: React.ReactNode }) => (
         <div className="rounded-xl border border-[#DFE1E6] bg-[#FAFBFC] p-4 shadow-sm">
@@ -711,14 +608,27 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                                             <span className="text-white text-[11px]">✨</span>
                                         </div>
                                         <div className="max-w-[85%]">
-                                            <CreateClientFormCard
-                                                onSubmit={async (payload) => {
+                                            <CreateClientForm
+                                                onResult={async (result) => {
+                                                    // Remove the form from messages
                                                     setMessages((prev) => prev.filter((m) => m.id !== message.id));
-                                                    await sendMessageWithContent(payload);
+                                                    
+                                                    // Format result message for AI
+                                                    let resultMessage: string;
+                                                    if (result.success && result.clientId && result.clientName) {
+                                                        resultMessage = `Client creation completed successfully. Client Name: "${result.clientName}", Client ID: ${result.clientId}. The client has been created in the system.`;
+                                                    } else {
+                                                        const errorReason = result.error || "Unknown error occurred";
+                                                        resultMessage = `Client creation failed. Error: ${errorReason}. Please explain what went wrong and suggest how to fix it.`;
+                                                    }
+                                                    
+                                                    // Send result to AI chat so it can explain what happened
+                                                    await sendMessageWithContent(resultMessage);
                                                 }}
                                                 onCancel={() => {
                                                     setMessages((prev) => prev.filter((m) => m.id !== message.id));
                                                 }}
+                                                isLoading={isLoading}
                                             />
                                         </div>
                                     </div>
@@ -798,11 +708,14 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
 
                 <div className="flex items-center gap-2">
                     <textarea
+                        id="ai-chat-input"
+                        name="ai_chat_input"
                         ref={inputRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask a question..."
+                        autoComplete="off"
                         className="flex-1 resize-none rounded border border-[#DFE1E6] bg-white px-3 py-2 text-[12px] text-[#172B4D] placeholder:text-[#97A0AF] focus:border-[#0052CC] focus:outline-none transition-colors"
                         rows={1}
                         disabled={isLoading}
@@ -810,6 +723,7 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                     />
 
                     <button
+                        type="button"
                         onClick={isListening ? stopListening : startListening}
                         disabled={isLoading}
                         className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${
@@ -825,6 +739,7 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                     </button>
 
                     <button
+                        type="button"
                         onClick={() => setVoiceEnabled(!voiceEnabled)}
                         className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${
                             voiceEnabled
@@ -843,6 +758,7 @@ export function AIChat({ clientId, clientName, allClients }: AIChatProps) {
                     </button>
 
                     <button
+                        type="button"
                         onClick={sendMessage}
                         disabled={!input.trim() || isLoading}
                         className="w-8 h-8 flex items-center justify-center rounded bg-[#0052CC] text-white hover:bg-[#0747A6] transition-colors disabled:opacity-30"

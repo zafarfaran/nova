@@ -1,41 +1,66 @@
 """SQLAlchemy models package."""
 
-from app.models.base import Base, TimestampMixin
-from app.models.client import Client, EntityType
-from app.models.vat_period import VATPeriod
-from app.models.evidence import EvidenceItem, EvidenceCategory, EvidenceStatus
-from app.models.document import Document, DocumentStatus, DocumentType
-from app.models.validation import ValidationResult, RuleType, ValidationStatus
-from app.models.audit import AuditTrailEntry
-from app.models.chaser import ChaserRequest, ChaserResponse, ChaserStatus
-from app.models.chat import ChatSession, ChatMessage, MessageRole
-from app.models.bank_connection import BankConnection
-from app.models.auto_chaser import AutoChaser
-from app.models.checklist_item import ChecklistItem
+from app.models.shared import Base, TimestampMixin
+
+# Core models
+from app.models.clients import Client, EntityType, ClientType
+from app.models.documents import Document, DocumentStatus
+from app.models.validation.validation import ValidationResult, RuleType, ValidationStatus
+from app.models.chaser.chaser import ChaserRequest, ChaserResponse, ChaserStatus
+from app.models.chat.chat import ChatSession, ChatMessage, MessageRole
+
+# Enterprise schema models
+from app.models.clients import ClientContact
+from app.models.engagements import Engagement, EngagementType, EngagementStatus
+from app.models.documents import DocumentCategory, DocumentType
+from app.models.documents import FileObject
+from app.models.documents import DocumentVersion, ExtractionStatus
+from app.models.clients import Counterparty, CounterpartyType
+from app.models.clients import FinancialAccount, AccountType
+from app.models.requests import RequestSet, RequestSetStatus
+from app.models.requests import RequestItem, RequestItemStatus, request_item_documents
+from app.models.requests import RequestTemplate, RequestTemplateItem
+from app.models.audit.log import AuditLog
 
 __all__ = [
+    # Base
     "Base",
     "TimestampMixin",
+    # Core models
     "Client",
     "EntityType",
-    "VATPeriod",
-    "EvidenceItem",
-    "EvidenceCategory",
-    "EvidenceStatus",
+    "ClientType",
     "Document",
     "DocumentStatus",
-    "DocumentType",
     "ValidationResult",
     "RuleType",
     "ValidationStatus",
-    "AuditTrailEntry",
     "ChaserRequest",
     "ChaserResponse",
     "ChaserStatus",
     "ChatSession",
     "ChatMessage",
     "MessageRole",
-    "BankConnection",
-    "AutoChaser",
-    "ChecklistItem",
+    # Enterprise schema models
+    "ClientContact",
+    "Engagement",
+    "EngagementType",
+    "EngagementStatus",
+    "DocumentCategory",
+    "DocumentType",
+    "FileObject",
+    "DocumentVersion",
+    "ExtractionStatus",
+    "Counterparty",
+    "CounterpartyType",
+    "FinancialAccount",
+    "AccountType",
+    "RequestSet",
+    "RequestSetStatus",
+    "RequestItem",
+    "RequestItemStatus",
+    "request_item_documents",
+    "RequestTemplate",
+    "RequestTemplateItem",
+    "AuditLog",
 ]

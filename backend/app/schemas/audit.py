@@ -1,30 +1,11 @@
-"""Pydantic schemas for Audit Trail."""
+"""Backward compatibility: Re-export from new location."""
 
-from datetime import datetime
+from app.schemas.audit.audit import (
+    AuditLogResponse,
+    AuditLogList,
+)
 
-from pydantic import BaseModel, ConfigDict
-
-
-class AuditTrailEntryResponse(BaseModel):
-    """Schema for Audit Trail Entry response."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    vat_period_id: int
-    action: str
-    description: str | None
-    performed_by: str | None
-    performed_at: datetime
-    entity_type: str | None
-    entity_id: int | None
-    old_value: str | None
-    new_value: str | None
-    created_at: datetime
-
-
-class AuditTrailList(BaseModel):
-    """Schema for listing audit trail entries."""
-
-    items: list[AuditTrailEntryResponse]
-    total: int
+__all__ = [
+    "AuditLogResponse",
+    "AuditLogList",
+]

@@ -33,19 +33,23 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const validatedData = SyncDocumentSchema.parse(body);
 
-        // Get the client to verify it exists
-        const client = await db.client.findUnique({
-            where: { id: validatedData.clientId },
-            select: {
-                id: true,
-                name: true,
-            },
-        });
+        // Verify client exists via backend API
+        try {
+            const clientResponse = await fetch(`${API_BASE_URL}/api/v1/clients/${validatedData.clientId}`, {
+                method: "GET",
+                headers: { "Content-Type": "application/json" },
+            });
 
-        if (!client) {
+            if (!clientResponse.ok) {
+                return NextResponse.json(
+                    { success: false, error: "Client not found" },
+                    { status: 404 }
+                );
+            }
+        } catch (error) {
             return NextResponse.json(
-                { success: false, error: "Client not found" },
-                { status: 404 }
+                { success: false, error: "Failed to verify client" },
+                { status: 500 }
             );
         }
 

@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'nova-monitor'
+
+scrape_configs:
+  - job_name: 'nova-backend'
+    static_configs:
+      - targets: ['host.docker.internal:8000']  # Use host.docker.internal for Docker networking
+        # Alternative: Use 'localhost:8000' if running Prometheus on host
+        # Alternative: Use service name if backend is also in Docker Compose
+        labels:
+          service: 'nova-backend'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
