@@ -19,13 +19,11 @@ from app.services.tax.domains.pensions.schemas import (
     PersonalPensionRequest,
     SalarySacrificeRequest,
 )
-from app.tax.personal_pension import analyse_personal_pension
-from app.tax.salary_sacrifice import analyse_salary_sacrifice
 from app.tax.types import IncomeSource, IncomeType
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["tax-pensions"])
 
 
 def _validate_client(client_id: int, session: Session) -> None:
@@ -78,11 +76,14 @@ def model_personal_pension(
     """Model personal pension contribution scenarios for a client."""
     _validate_client(client_id, session)
 
+    from app.services.tax.domains.pensions.service import PensionsDomain
+
+    domain = PensionsDomain()
     income_sources = _parse_income_sources(
         [s.model_dump() for s in request.income_sources]
     )
 
-    analysis, _tax_position = analyse_personal_pension(
+    return domain.model_personal_pension(
         income_sources=income_sources,
         proposed_contribution=request.proposed_contribution,
         current_contribution=request.current_contribution,
@@ -91,10 +92,8 @@ def model_personal_pension(
         region=request.region,
         number_of_children=request.number_of_children,
         claims_child_benefit=request.claims_child_benefit,
-        pension_contributions_by_year=request.contributions_by_year,
+        contributions_by_year=request.contributions_by_year,
     )
-
-    return analysis
 
 
 @router.post("/clients/{client_id}/model-salary-sacrifice")
@@ -106,13 +105,16 @@ def model_salary_sacrifice(
     """Model salary sacrifice scenarios for a client."""
     _validate_client(client_id, session)
 
+    from app.services.tax.domains.pensions.service import PensionsDomain
+
+    domain = PensionsDomain()
     other_sources = None
     if request.other_income_sources:
         other_sources = _parse_income_sources(
             [s.model_dump() for s in request.other_income_sources]
         )
 
-    analysis, _tax_position = analyse_salary_sacrifice(
+    return domain.model_salary_sacrifice(
         gross_salary=request.gross_salary,
         sacrifice_amount=request.sacrifice_amount,
         current_sacrifice=request.current_sacrifice,
@@ -120,7 +122,5 @@ def model_salary_sacrifice(
         region=request.region,
         number_of_children=request.number_of_children,
         claims_child_benefit=request.claims_child_benefit,
-        pension_contributions_by_year=request.contributions_by_year,
+        contributions_by_year=request.contributions_by_year,
     )
-
-    return analysis

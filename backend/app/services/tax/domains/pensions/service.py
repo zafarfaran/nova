@@ -115,6 +115,58 @@ class PensionsDomain(BaseTaxDomain):
             "mpaa_applies": aa_result.mpaa_applies,
         }
 
+    def model_personal_pension(
+        self,
+        income_sources: list[IncomeSource],
+        proposed_contribution: float,
+        *,
+        current_contribution: float = 0,
+        employer_contributions: float = 0,
+        gift_aid: float = 0,
+        region: str = "england",
+        number_of_children: int = 0,
+        claims_child_benefit: bool = False,
+        contributions_by_year: dict[str, float] | None = None,
+    ) -> dict:
+        """Model personal pension contribution scenario."""
+        analysis, _tax_position = analyse_personal_pension(
+            income_sources=income_sources,
+            proposed_contribution=proposed_contribution,
+            current_contribution=current_contribution,
+            employer_contributions=employer_contributions,
+            gift_aid=gift_aid,
+            region=region,
+            number_of_children=number_of_children,
+            claims_child_benefit=claims_child_benefit,
+            pension_contributions_by_year=contributions_by_year,
+        )
+        return analysis
+
+    def model_salary_sacrifice(
+        self,
+        gross_salary: float,
+        sacrifice_amount: float,
+        *,
+        current_sacrifice: float = 0,
+        other_income_sources: list[IncomeSource] | None = None,
+        region: str = "england",
+        number_of_children: int = 0,
+        claims_child_benefit: bool = False,
+        contributions_by_year: dict[str, float] | None = None,
+    ) -> dict:
+        """Model salary sacrifice scenario."""
+        analysis, _tax_position = analyse_salary_sacrifice(
+            gross_salary=gross_salary,
+            sacrifice_amount=sacrifice_amount,
+            current_sacrifice=current_sacrifice,
+            other_income_sources=other_income_sources,
+            region=region,
+            number_of_children=number_of_children,
+            claims_child_benefit=claims_child_benefit,
+            pension_contributions_by_year=contributions_by_year,
+        )
+        return analysis
+
     def get_observations(self, calculation_result: dict) -> list[dict]:
         """Flag notable pension observations."""
         observations: list[dict] = []

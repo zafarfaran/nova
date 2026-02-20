@@ -12,7 +12,7 @@ from app.services.tax.domains.child_benefit.schemas import ChildBenefitRequest
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["tax-child-benefit"])
 
 
 @router.post("/clients/{client_id}/calculate")

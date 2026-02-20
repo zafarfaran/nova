@@ -12,7 +12,7 @@ from app.services.tax.domains.income_tax.schemas import IncomeTaxRequest
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["tax-income-tax"])
 
 
 @router.post("/clients/{client_id}/calculate")
