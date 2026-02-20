@@ -707,7 +707,7 @@ class ChatTools:
 
         # Send welcome email asynchronously
         try:
-            from app.services.email_notification_service import EmailNotificationService
+            from app.services.email import EmailNotificationService
             email_notif_service = EmailNotificationService(db=self.db)
             await email_notif_service.send_welcome_email(
                 client_id=client.id,
@@ -781,7 +781,7 @@ class ChatTools:
         """Send an email to a client."""
         from app.ai import get_ai_provider
         from app.schemas.email import EmailRequest
-        from app.services.email_service import EmailService
+        from app.services.email import EmailService
 
         logger.info(f"Tool send_email called: to={to_email}, purpose={purpose}, tone={tone}")
 

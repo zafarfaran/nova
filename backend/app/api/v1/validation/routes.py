@@ -157,7 +157,7 @@ async def reject_document(
     explaining why it was rejected.
     """
     from app.models.documents import DocumentStatus
-    from app.services.email_notification_service import EmailNotificationService
+    from app.services.email import EmailNotificationService
 
     doc_service = DocumentService(db)
     doc = doc_service.get(doc_id)

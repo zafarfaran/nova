@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 from app.ai import get_ai_provider
 from app.schemas.email import EmailPurpose, EmailRequest, EmailTone
-from app.services.email_service import EmailService
+from app.services.email import EmailService
 
 
 async def send_test_emails(test_email: str):
