@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from app.api.v1 import audit, chaser, chat, clients, documents, email, engagements, requests, validation
+from app.api.v1.tax import tax_chat_router, tax_clients_router, tax_context_router, tax_exports_router
 from app.config import get_settings
 from app.core.logging import setup_structured_logging
 from app.core.metrics import get_metrics
@@ -81,3 +82,9 @@ app.include_router(chaser.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(email.router, prefix="/api/v1")
+
+# Tax planning routes (from Helio)
+app.include_router(tax_chat_router, prefix="/api/v1/tax")
+app.include_router(tax_clients_router, prefix="/api/v1/tax")
+app.include_router(tax_context_router, prefix="/api/v1/tax")
+app.include_router(tax_exports_router, prefix="/api/v1/tax")
