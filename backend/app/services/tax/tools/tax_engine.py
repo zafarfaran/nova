@@ -2,6 +2,7 @@
 
 import logging
 
+from app.services.tax.domains import get_registry
 from app.tax.engine import compute_full_tax_position
 from app.tax.salary_sacrifice import analyse_salary_sacrifice
 from app.tax.personal_pension import analyse_personal_pension
@@ -69,10 +70,15 @@ def execute_compute_tax_position(
             position.total_tax,
         )
 
+        # Include domain registry info for domain-aware responses
+        registry = get_registry()
+        domain_names = registry.names()
+
         return {
             "success": True,
             "taxPosition": _position_to_summary(position),
             "dashboardData": dashboard,
+            "availableDomains": domain_names,
         }
 
     except Exception as e:

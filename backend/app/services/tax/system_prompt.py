@@ -56,6 +56,15 @@ def build_system_prompt(
 
     prompt = base.replace("{{CLIENT_CONTEXT}}", context_text)
 
+    # Add registered tax domains
+    try:
+        from app.services.tax.domains import get_registry
+        registry = get_registry()
+        domain_list = ", ".join(d.display_name for d in registry.all())
+        prompt += f"\n\n<available_tax_domains>\n{domain_list}\n</available_tax_domains>\n"
+    except Exception:
+        logger.debug("Could not load tax domain registry for system prompt")
+
     has_household = bool(client_context and "household_members" in client_context)
     logger.info(
         "System prompt built, has_client=%s, tax_plan_mode=%s, has_household_members=%s, "
