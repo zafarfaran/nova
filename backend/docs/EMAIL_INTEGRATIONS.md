@@ -166,7 +166,7 @@ Nova: *Automatically composes and sends professional email*
 
 **API Usage:**
 ```python
-from app.services.email_notification_service import EmailNotificationService
+from app.services.email import EmailNotificationService
 
 email_service = EmailNotificationService(db=db)
 await email_service.send_vat_return_ready_email(
@@ -377,7 +377,7 @@ Check logs for email activity:
 
 ```bash
 # See all email notifications
-grep "app.services.email_notification_service" logs/app.log
+grep "app.services.email.notification" logs/app.log
 
 # See specific types
 grep "Welcome email sent" logs/app.log
@@ -387,14 +387,14 @@ grep "Rejection email sent" logs/app.log
 
 **Log Examples:**
 ```
-INFO | app.services.email_notification_service | Sending welcome email to client Acme Ltd (acme@example.com)
-INFO | app.services.email_notification_service | Welcome email sent successfully to acme@example.com
+INFO | app.services.email.notification | Sending welcome email to client Acme Ltd (acme@example.com)
+INFO | app.services.email.notification | Welcome email sent successfully to acme@example.com
 
-INFO | app.services.email_notification_service | Sending validation failure email to john@example.com for document Invoice_2024.pdf
-INFO | app.services.email_notification_service | Validation failure email sent successfully to john@example.com
+INFO | app.services.email.notification | Sending validation failure email to john@example.com for document Invoice_2024.pdf
+INFO | app.services.email.notification | Validation failure email sent successfully to john@example.com
 
-INFO | app.services.email_notification_service | Sending rejection email to sarah@example.com for document Receipt_001.pdf
-INFO | app.services.email_notification_service | Rejection email sent successfully to sarah@example.com
+INFO | app.services.email.notification | Sending rejection email to sarah@example.com for document Receipt_001.pdf
+INFO | app.services.email.notification | Rejection email sent successfully to sarah@example.com
 ```
 
 ---

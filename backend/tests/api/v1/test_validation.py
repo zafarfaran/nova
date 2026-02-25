@@ -187,7 +187,7 @@ class TestRejectDocument:
                 "rejection_reason": "Invalid format"
             }
             
-            with patch("app.services.email_notification_service.EmailNotificationService.send_document_rejection_email") as mock_email:
+            with patch("app.services.email.EmailNotificationService.send_document_rejection_email") as mock_email:
                 mock_email.return_value = True
                 response = client.post(f"/api/v1/validation/reject/{doc_id}", json=rejection_data)
                 assert response.status_code == status.HTTP_200_OK

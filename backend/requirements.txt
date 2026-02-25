@@ -27,10 +27,14 @@ httpx>=0.26.0
 
 # PDF Processing
 pdfplumber>=0.10.0
+reportlab>=4.1.0  # Tax report PDF generation (from Helio)
 
 # Testing
 pytest>=7.4.4
 pytest-asyncio>=0.23.3
+
+# Structured logging (from Helio tax services)
+structlog>=24.4.0
 
 # Metrics and Observability
 prometheus-client>=0.19.0

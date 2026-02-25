@@ -28,6 +28,16 @@ from app.models.requests import RequestItem  # noqa: F401
 from app.models.requests import RequestTemplate, RequestTemplateItem  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401
 
+# Helio tax planning models
+from app.models.tax import (  # noqa: F401
+    TaxProfile,
+    TaxObservation,
+    TaxMeetingNote,
+    TaxConversation,
+    TaxMessage,
+    TaxContextSnippet,
+)
+
 config = context.config
 
 if config.config_file_name is not None:
